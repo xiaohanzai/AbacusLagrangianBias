@@ -6,8 +6,9 @@ from abacusnbody.data.compaso_halo_catalog import CompaSOHaloCatalog
 import warnings
 warnings.filterwarnings("ignore")
 import sys
+import os
 
-use_nabla2d1 = True
+use_nabla2d1 = False#True
 
 # some important parameters
 boxsize = 2000.
@@ -118,6 +119,8 @@ def calc_A(pos, nabla2d1, arr, ind_slab, Nmesh):
     A = np.zeros((nbins, ncell))
 
     for m in range(nbins_d1):
+        if arr[m] == arr[m+1]: # empty bin
+            continue
         if use_nabla2d1:
             nabla2d1_ = nabla2d1[arr[m]:arr[m+1]]
             bin_edges_nabla2d1 = np.percentile(nabla2d1_, bin_edges_nabla2d1_percentile)
@@ -126,6 +129,8 @@ def calc_A(pos, nabla2d1, arr, ind_slab, Nmesh):
             bin_edges_nabla2d1 = np.linspace(-100, 100, nbins_nabla2d1+1)
         for n in range(nbins_nabla2d1):
             ii = (nabla2d1_ >= bin_edges_nabla2d1[n]) & (nabla2d1_ < bin_edges_nabla2d1[n+1])
+            if ii.sum() == 0: # empty bin
+                continue
             Am = ArrayCatalog({'Position': pos[arr[m]:arr[m+1]][ii]}).to_mesh(
                 Nmesh=Nmesh,
                 BoxSize=boxsize,
@@ -157,6 +162,10 @@ def main():
         sigma_nabla2d1 = np.std(tmp)
         del tmp
 
+    outpath = '/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/' % (str(z), Rf) + folder
+    if not os.path.exists(outpath):
+        os.mkdir(outpath)
+
     for islab in islabs:
         islab = int(islab)
         # load in particles
@@ -164,7 +173,7 @@ def main():
         # calculate A
         A = calc_A(pos, nabla2d1, arr, ind_slab, Nmesh)
         # save to disk
-        np.savez_compressed('/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/' % (str(z), Rf) + folder + '/matrixA_slab%d_Nmesh%d_%s' % (islab, Nmesh, interp_method), A=A, ind_slab=ind_slab)
+        np.savez_compressed(outpath + '/matrixA_slab%d_Nmesh%d_%s' % (islab, Nmesh, interp_method), A=A, ind_slab=ind_slab)
 
 if __name__ == '__main__':
     main()

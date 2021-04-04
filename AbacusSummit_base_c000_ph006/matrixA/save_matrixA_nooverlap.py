@@ -9,18 +9,26 @@ N0 = 6912
 N = 1728
 Nfiles = 34
 
-use_nabla2d1 = True
+use_nabla2d1 = False#True
 
 interp_method = 'cic'
 
-def load_matrixA_slab(islab, path, Nmesh, interp_method, remove_overlaps=(False, False), direct_load=False):
+def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(False, False), direct_load=False, sum_nabla2d1_bins=False, nbins_nabla2d1=None):
     '''
     Load the matrix A for a single slab.  Take care of the boundaries.
+    If sum up the nabla2d1 bins, get the matrix A assuming f(delta1).
     '''
     Nmesh2 = Nmesh**2
     with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab, Nmesh, interp_method)) as tmp:
-        A = tmp['A']
+        A_ = tmp['A']
         ind_slab = tmp['ind_slab']
+    if sum_nabla2d1_bins:
+        A = np.zeros((A_.shape[0]//nbins_nabla2d1, A_.shape[1]))
+        for i in range(nbins_nabla2d1):
+            A += A_[i::nbins_nabla2d1]
+        del A_
+    else:
+        A = A_
     if direct_load:
         return A, ind_slab
 
@@ -31,8 +39,15 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method, remove_overlaps=(False,
         islab_ = (islab-(-1)**l)%Nfiles
         remove = remove_overlaps[l]
         with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab_, Nmesh, interp_method)) as tmp:
-            A1 = tmp['A']
+            A1_ = tmp['A']
             ind_slab1 = tmp['ind_slab']
+        if sum_nabla2d1_bins:
+            A1 = np.zeros_like(A)
+            for i in range(nbins_nabla2d1):
+                A1 += A1_[i::nbins_nabla2d1]
+            del A1_
+        else:
+            A1 = A1_
         for i,j in enumerate(ind_slab1):
             # find the overlaps
             ind = np.where(ind_slab == j)[0]
@@ -62,7 +77,8 @@ def main():
     path = '/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/' % (str(z), Rf) + folder
 
     outpath = path+'/nooverlap'
-    os.mkdir(outpath)
+    if not os.path.exists(outpath):
+        os.mkdir(outpath)
 
     # load each A and save to disk
     for i in range(Nfiles):
