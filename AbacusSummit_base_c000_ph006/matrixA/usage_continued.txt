@@ -1,0 +1,8 @@
+After calc_quantities.py and write_out_quantities.py:
+
+3. run_matrixA.py: calculate the matrix A for each superslab and save to disk.  Specify the bins and whether to include nabla^2 delta1 or G2 in the script.
+
+4. save_matrixA_nooverlap.py: load in each calculated A from disk, load in the adjacent A's, complete the incomplete layers, remove the left or right side of the overlap layers, and save to disk.
+
+See fit_f(delta1, nabla2d1).ipynb for results.
+
