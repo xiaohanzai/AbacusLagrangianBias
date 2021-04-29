@@ -8,11 +8,18 @@ warnings.filterwarnings("ignore")
 import sys
 import os
 
-use_nabla2d1 = False#True
+use_nabla2d1 = True
+
+sim, z, Rf, Nmesh = sys.argv[1:5]
+# redshift, smoothing scale, mesh size
+z = float(z)
+Rf = float(Rf)
+Nmesh = int(Nmesh)
 
 # some important parameters
 boxsize = 2000.
 Nfiles = 34
+N = 1152
 interp_method = 'cic'
 
 # delta1 bins
@@ -33,30 +40,28 @@ nbins = nbins_d1*nbins_nabla2d1
 
 def load_field_particles(islab, z):
     '''load in field particles of a slab'''
-    cat = CompaSOHaloCatalog(
-        '/mnt/store2/bigsims/AbacusSummit/AbacusSummit_base_c000_ph006/halos/z%.3f/halo_info/halo_info_%03d.asdf' %
-        (z,islab), fields=[], load_subsamples='A_field_rv')
+    cat_path = '/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/halo_info/halo_info_%03d.asdf' % (sim,z,islab)
+    cat = CompaSOHaloCatalog(cat_path, fields=[], load_subsamples='A_field_rv')
     xmin, xmax = cat.subsamples['pos'][:,0].min(), cat.subsamples['pos'][:,0].max()
     return xmin, xmax, cat.subsamples['pos']
 
 def load_particles(islab, z, Rf):
     '''load in particles in one slab'''
     # position
-    pos = load_field_particles(islab, z)[-1]
-    cat = CompaSOHaloCatalog(
-        '/mnt/store2/bigsims/AbacusSummit/AbacusSummit_base_c000_ph006/halos/z%.3f/halo_info/halo_info_%03d.asdf' %
-        (z,islab), fields=[], load_subsamples='A_halo_rv')
-    pos = np.concatenate((pos, cat.subsamples['pos']))
-    del cat
+    cat_path = '/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/halo_info/halo_info_%03d.asdf' % (sim,z,islab)
+    cat1 = CompaSOHaloCatalog(cat_path, fields=[], load_subsamples='A_field_rv')
+    cat2 = CompaSOHaloCatalog(cat_path, fields=[], load_subsamples='A_halo_rv')
+    pos = np.concatenate((cat1.subsamples['pos'], cat2.subsamples['pos']))
+    del cat1, cat2
 
     # delta1
-    with np.load('/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/slab%d_sdelta1.npz' % (str(z),Rf,islab)) as tmp:
+    with np.load('/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/slab%d_sdelta1.npz' % (sim,str(z),Rf,islab)) as tmp:
         sdelta1 = np.concatenate((tmp['field'], tmp['halo']))
 
     # nabla2d1
     nabla2d1 = None
     if use_nabla2d1:
-        with np.load('/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/slab%d_nabla2d1.npz' % (str(z),Rf,islab)) as tmp:
+        with np.load('/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/slab%d_nabla2d1.npz' % (sim,str(z),Rf,islab)) as tmp:
             nabla2d1 = np.concatenate((tmp['field'], tmp['halo']))
 
     return pos, sdelta1, nabla2d1
@@ -142,27 +147,24 @@ def calc_A(pos, nabla2d1, arr, ind_slab, Nmesh):
     return A
 
 def main():
-    # redshift, smoothing scale, mesh size
-    z = float(sys.argv[1])
-    Rf = float(sys.argv[2])
-    Nmesh = int(sys.argv[3])
-    if len(sys.argv) > 4:
-        islabs = sys.argv[4:]
+    if len(sys.argv) > 5:
+        islabs = sys.argv[5:]
     else:
         islabs = np.linspace(0,Nfiles-1,Nfiles,dtype=int)
 
+    ic_path = '/mnt/store2/xwu/AbacusSummit/%s/ic_%d/' % (sim, N)
     # load in the smoothed delta_1 and calculate std
-    tmp = np.load('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/sdelta1_Rf%.3g.npy' % Rf)
+    tmp = np.load(ic_path+'/sdelta1_Rf%.3g.npy' % Rf)
     sigma_sdelta1 = np.std(tmp)
     del tmp
     # load in nabla^2 delta_1 and calculate std
     sigma_nabla2d1 = None
     if use_nabla2d1:
-        tmp = np.load('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/nabla2d1_Rf%.3g.npy' % Rf)
+        tmp = np.load(ic_path+'/nabla2d1_Rf%.3g.npy' % Rf)
         sigma_nabla2d1 = np.std(tmp)
         del tmp
 
-    outpath = '/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/' % (str(z), Rf) + folder
+    outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
     if not os.path.exists(outpath):
         os.mkdir(outpath)
 

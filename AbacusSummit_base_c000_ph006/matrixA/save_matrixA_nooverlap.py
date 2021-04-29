@@ -6,10 +6,10 @@ import os
 boxsize = 2000.
 k0 = 2*np.pi/boxsize
 N0 = 6912
-N = 1728
+N = 1152
 Nfiles = 34
 
-use_nabla2d1 = False#True
+use_nabla2d1 = True
 
 interp_method = 'cic'
 
@@ -64,7 +64,7 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
     return A[:, imin*Nmesh2:imax*Nmesh2], ind_slab[imin:imax]
 
 def main():
-    z, Rf, Nmesh = sys.argv[1:]
+    sim, z, Rf, Nmesh = sys.argv[1:]
     z = float(z)
     Rf = float(Rf)
     Nmesh = int(Nmesh)
@@ -74,7 +74,7 @@ def main():
     if use_nabla2d1:
         folder += '_nabla2d1'
 
-    path = '/mnt/store2/xwu/AbacusSummit/base_c000_ph006/z%s_tilde_operators_nbody/Rf%.3g/' % (str(z), Rf) + folder
+    path = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
 
     outpath = path+'/nooverlap'
     if not os.path.exists(outpath):
