@@ -9,23 +9,31 @@ N0 = 6912
 N = 1152
 Nfiles = 34
 
-use_nabla2d1 = True
-
 interp_method = 'cic'
 
-def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(False, False), direct_load=False, sum_nabla2d1_bins=False, nbins_nabla2d1=None):
+def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(False, False), direct_load=False, **kwargs):
     '''
     Load the matrix A for a single slab.  Take care of the boundaries.
-    If sum up the nabla2d1 bins, get the matrix A assuming f(delta1).
+    If sum up the nabla2d1 or G2 bins, get the matrix A assuming f(delta1).
     '''
+    # to be compatible with previous versions
+    sum_q_bins = False
+    nbins_q = None
+    if 'sum_nabla2d1_bins' in kwargs:
+        sum_q_bins = kwargs['sum_nabla2d1_bins']
+        nbins_q = kwargs['nbins_nabla2d1']
+    if 'sum_G2_bins' in kwargs:
+        sum_q_bins = kwargs['sum_G2_bins']
+        nbins_q = kwargs['nbins_G2']
+
     Nmesh2 = Nmesh**2
     with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab, Nmesh, interp_method)) as tmp:
         A_ = tmp['A']
         ind_slab = tmp['ind_slab']
-    if sum_nabla2d1_bins:
-        A = np.zeros((A_.shape[0]//nbins_nabla2d1, A_.shape[1]))
-        for i in range(nbins_nabla2d1):
-            A += A_[i::nbins_nabla2d1]
+    if sum_q_bins:
+        A = np.zeros((A_.shape[0]//nbins_q, A_.shape[1]))
+        for i in range(nbins_q):
+            A += A_[i::nbins_q]
         del A_
     else:
         A = A_
@@ -41,10 +49,10 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
         with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab_, Nmesh, interp_method)) as tmp:
             A1_ = tmp['A']
             ind_slab1 = tmp['ind_slab']
-        if sum_nabla2d1_bins:
+        if sum_q_bins:
             A1 = np.zeros_like(A)
-            for i in range(nbins_nabla2d1):
-                A1 += A1_[i::nbins_nabla2d1]
+            for i in range(nbins_q):
+                A1 += A1_[i::nbins_q]
             del A1_
         else:
             A1 = A1_
@@ -64,15 +72,15 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
     return A[:, imin*Nmesh2:imax*Nmesh2], ind_slab[imin:imax]
 
 def main():
-    sim, z, Rf, Nmesh = sys.argv[1:]
+    sim, z, Rf, Nmesh, qname = sys.argv[1:]
     z = float(z)
     Rf = float(Rf)
     Nmesh = int(Nmesh)
 
     # saved to which folder
     folder = 'matrixA'
-    if use_nabla2d1:
-        folder += '_nabla2d1'
+    if qname in ['nabla2d1', 'G2']:
+        folder += '_'+qname
 
     path = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
 
