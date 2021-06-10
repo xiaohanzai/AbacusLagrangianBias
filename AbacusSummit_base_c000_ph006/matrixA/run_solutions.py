@@ -10,6 +10,8 @@ sys.path.append('../../')
 from cosmology_functions import *
 from save_matrixA_nooverlap import load_matrixA_slab
 import os
+from qpsolvers import solve_qp
+from scipy.stats import norm
 
 interp_method = 'cic'
 
@@ -61,6 +63,19 @@ def calc_reduced_M(M):
     M_ = np.dot( D, np.dot(M, D) )
     return M_, D, ii_empty
 
+def calc_allbins_pdf(qname):
+    bin_edges_d1 = np.linspace(-4, 5, 40+1)
+    allbins_pdf = norm.cdf(bin_edges_d1[1:]) - norm.cdf(bin_edges_d1[:-1])
+    if qname == 'nabla2d1':
+        bin_edges_q_percentile = np.array([0, 5, 35, 65, 95, 100])
+    elif qname == 'G2':
+        bin_edges_q_percentile = np.array([0, 10, 30, 70, 90, 100])
+    else:
+        return allbins_pdf
+    allbins_pdf = allbins_pdf.reshape(-1,1) * (bin_edges_q_percentile[1:] - bin_edges_q_percentile[:-1]).reshape(1,-1)
+    allbins_pdf /= allbins_pdf.sum()
+    return allbins_pdf.reshape(-1)
+
 def main():
     sim, z, Rf, Nmesh, qname = sys.argv[1:6]
     Nthress = sys.argv[6:]
@@ -102,29 +117,37 @@ def main():
                 direct_load=True, calc_M=True, delta_hs=delta_hs)
     M_, D, ii_empty = calc_reduced_M(M)
 
-    f_delta1s = [None]*len(Nthress)
-    for i in range(len(Nthress)):
-        b = bs[i]
-        f_delta1 = np.dot(D, np.dot(np.linalg.inv(M_), b/np.diag(M)**0.5)) * nparticles/ncell
-        f_delta1s[i] = f_delta1
+    # no constraint
+    f_delta1s = [np.dot(D, np.dot(np.linalg.inv(M_), b/np.diag(M)**0.5)) * nparticles/ncell for b in bs]
+    # qp with non negative constraint and \int = 1 constraint
+    allbins_pdf = calc_allbins_pdf(qname)
+    f_delta1s_qp = [solve_qp(M, -b.reshape(len(M),-1), G=-np.identity(len(M)), h=np.zeros(len(M)),
+                A=allbins_pdf, b=np.array([ncell/nparticles]), solver='cvxopt') \
+                * nparticles/ncell for b in bs]
 
     # write to disk
     writepath = '../../'+sim
     if not os.path.exists(writepath):
         os.system('mkdir ' + writepath)
+    writepath += '/solutions'
+    if not os.path.exists(writepath):
+        os.system('mkdir ' + writepath)
     if qname == 'delta1':
         fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d.txt' % (str(z), Rf, Nmesh)
+        fname_qp = 'f(delta1)_z%s_Rf%.3g_Nmesh%d_qp.txt' % (str(z), Rf, Nmesh)
     else:
         fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d.txt' % (qname, str(z), Rf, Nmesh)
-    with open(writepath+'/'+fname, 'w') as f:
-        f.write('# N>')
-        for Nthres in Nthress:
-            f.write('%d  ' % Nthres)
-        f.write('\n')
-        for m in range(len(f_delta1s[0])):
-            for j in range(len(Nthress)):
-                f.write('%.3g  ' % f_delta1s[j][m])
+        fname_qp = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d_qp.txt' % (qname, str(z), Rf, Nmesh)
+    for fname_, f_delta1s_ in zip([fname, fname_qp], [f_delta1s, f_delta1s_qp]):
+        with open(writepath+'/'+fname_, 'w') as f:
+            f.write('# N>')
+            for Nthres in Nthress:
+                f.write('%d  ' % Nthres)
             f.write('\n')
+            for m in range(len(f_delta1s_[0])):
+                for j in range(len(Nthress)):
+                    f.write('%.3g  ' % f_delta1s_[j][m])
+                f.write('\n')
 
 if __name__ == '__main__':
     main()
