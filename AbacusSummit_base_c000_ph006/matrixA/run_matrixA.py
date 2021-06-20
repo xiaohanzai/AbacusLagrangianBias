@@ -8,12 +8,6 @@ warnings.filterwarnings("ignore")
 import sys
 import os
 
-sim, z, Rf, Nmesh, qname = sys.argv[1:6]
-# redshift, smoothing scale, mesh size
-z = float(z)
-Rf = float(Rf)
-Nmesh = int(Nmesh)
-
 # some important parameters
 boxsize = 2000.
 Nfiles = 34
@@ -26,27 +20,17 @@ bin_edges_d1 = np.linspace(-4, 5, 40+1)
 nbins_d1 = len(bin_edges_d1)-1
 
 # bins for the other quantity
-nbins_q = 1
-folder = 'matrixA'
-if qname in ['nabla2d1', 'G2']:
-    if qname == 'nabla2d1':
-        bin_edges_q_percentile = np.array([0, 5, 35, 65, 95, 100])
-    else:
-        bin_edges_q_percentile = np.array([0, 10, 30, 70, 90, 100])
-    nbins_q = len(bin_edges_q_percentile)-1
-    folder += '_'+qname
+bin_edges_nabla2d1_percentile = np.array([0, 5, 35, 65, 95, 100])
+bin_edges_G2_percentile = np.array([0, 10, 30, 70, 90, 100])
 
-# total number of bins
-nbins = nbins_d1*nbins_q
-
-def load_field_particles(islab, z):
+def load_field_particles(islab, sim, z):
     '''load in field particles of a slab'''
     cat_path = '/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/halo_info/halo_info_%03d.asdf' % (sim,z,islab)
     cat = CompaSOHaloCatalog(cat_path, fields=[], load_subsamples='A_field_rv')
     xmin, xmax = cat.subsamples['pos'][:,0].min(), cat.subsamples['pos'][:,0].max()
     return xmin, xmax, cat.subsamples['pos']
 
-def load_particles(islab, z, Rf):
+def load_particles(islab, sim, z, Rf, qname):
     '''load in particles in one slab'''
     # position
     cat_path = '/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/halo_info/halo_info_%03d.asdf' % (sim,z,islab)
@@ -76,10 +60,10 @@ def calc_ind_slab(Nmesh, xmin, xmax):
     ind_slab = np.arange(indmin, indmax+1e-6, 1, dtype=int)%Nmesh
     return ind_slab
 
-def load_and_process_particles(islab, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q):
+def load_and_process_particles(islab, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q, qname):
     '''load in particles, discard unuseful ones, sort according to density'''
     # load in one slab
-    pos, sdelta1, q = load_particles(islab, z, Rf)
+    pos, sdelta1, q = load_particles(islab, sim, z, Rf, qname)
     # normalize the delta1 values
     sdelta1 /= sigma_sdelta1
     # throw away particles not in delta1 bins
@@ -110,7 +94,7 @@ def load_and_process_particles(islab, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma
 
     return pos, sdelta1, q, arr, ind_slab
 
-def calc_A(pos, q, arr, ind_slab, Nmesh):
+def calc_A(pos, q, arr, ind_slab, Nmesh, qname):
     '''calculate A with nbodykit'''
     ncell = Nmesh**2 * len(ind_slab)
     A = np.zeros((nbins, ncell))
@@ -139,10 +123,30 @@ def calc_A(pos, q, arr, ind_slab, Nmesh):
     return A
 
 def main():
+    sim, z, Rf, Nmesh, qname = sys.argv[1:6]
+    # redshift, smoothing scale, mesh size
+    z = float(z)
+    Rf = float(Rf)
+    Nmesh = int(Nmesh)
     if len(sys.argv) > 6:
         islabs = sys.argv[6:]
     else:
         islabs = np.linspace(0,Nfiles-1,Nfiles,dtype=int)
+
+    global nbins_q
+    global nbins
+    global bin_edges_q_percentile
+    nbins_q = 1
+    folder = 'matrixA'
+    if qname in ['nabla2d1', 'G2']:
+        if qname == 'nabla2d1':
+            bin_edges_q_percentile = bin_edges_nabla2d1_percentile
+        else:
+            bin_edges_q_percentile = bin_edges_G2_percentile
+        nbins_q = len(bin_edges_q_percentile)-1
+        folder += '_'+qname
+    # total number of bins
+    nbins = nbins_d1*nbins_q
 
     ic_path = '/mnt/store2/xwu/AbacusSummit/%s/ic_%d/' % (sim, N)
     # load in the smoothed delta_1 and calculate std
@@ -165,9 +169,9 @@ def main():
     for islab in islabs:
         islab = int(islab)
         # load in particles
-        pos, sdelta1, q, arr, ind_slab = load_and_process_particles(islab, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q)
+        pos, sdelta1, q, arr, ind_slab = load_and_process_particles(islab, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q, qname)
         # calculate A
-        A = calc_A(pos, q, arr, ind_slab, Nmesh)
+        A = calc_A(pos, q, arr, ind_slab, Nmesh, qname)
         # save to disk
         np.savez_compressed(outpath + '/matrixA_slab%d_Nmesh%d_%s' % (islab, Nmesh, interp_method), A=A, ind_slab=ind_slab)
 
