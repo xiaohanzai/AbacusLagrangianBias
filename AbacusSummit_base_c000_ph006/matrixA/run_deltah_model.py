@@ -2,25 +2,15 @@
 Somehow, the parallel version of this code doesn't work...
 '''
 import numpy as np
-from mpi4py import MPI
+#from mpi4py import MPI
 from nbodykit.lab import *
 from nbodykit import setup_logging
-from nbodykit import CurrentMPIComm
+#from nbodykit import CurrentMPIComm
 import matplotlib.pyplot as plt
 from abacusnbody.data.compaso_halo_catalog import CompaSOHaloCatalog
 import sys
 from scipy.interpolate import interp2d, griddata
-
-use_nabla2d1 = True
-
-sim, z, Rf, Nmesh, col, Nthres = sys.argv[1:]
-# redshift, smoothing scale, mesh size
-z = float(z)
-Rf = float(Rf)
-Nmesh = int(Nmesh)
-# which columns of the file to work on and what Nthres it corresponds to
-col = int(col)
-Nthres = int(Nthres)
+from run_matrixA import load_and_process_particles, bin_edges_d1, bin_edges_nabla2d1_percentile, bin_edges_G2_percentile
 
 # some important parameters
 boxsize = 2000.
@@ -29,67 +19,107 @@ N = 1152
 N0 = 6912
 interp_method = 'cic'
 
-# calculate sigma_d1 and sigma_nabla2d1
-ic_path = '/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic_%d/' % N
-# load in the smoothed delta_1 and calculate std
-tmp = np.load(ic_path+'/sdelta1_Rf%.3g.npy' % Rf)
-sigma_sdelta1 = np.std(tmp)
-del tmp
-# load in nabla^2 delta_1 and calculate std
-sigma_nabla2d1 = None
-if use_nabla2d1:
-    tmp = np.load(ic_path+'/nabla2d1_Rf%.3g.npy' % Rf)
-    sigma_nabla2d1 = np.std(tmp)
-    del tmp
+def main():
+    sim, z, Rf, Nmesh, qname, Nmesh_, col, Nthres = sys.argv[1:]
+    # redshift, smoothing scale, mesh size
+    z = float(z)
+    Rf = float(Rf)
+    Nmesh = int(Nmesh)
+    Nmesh_ = int(Nmesh_)
+    # which columns of the file to work on and what Nthres it corresponds to
+    col = int(col)
+    Nthres = int(Nthres)
 
-# read in the f(delta1)-delta1 relation
-if not use_nabla2d1:
-    data = np.loadtxt('f(delta1)_z%s_Rf%.3g_Nmesh400.txt' % (str(z), Rf))
-    ii = ~np.isnan(data[:,0])
-else:
-    data = np.loadtxt('f(delta1,nabla2d1)_z%s_Rf%.3g_Nmesh400.txt' % (str(z), Rf))
-    ii = ~np.isnan(data[:,0]) & ~np.isnan(data[:,1])
-#ii = data[:,0] < 3.8 # discard the noisy region
-f_delta1 = data[ii,col]
-
-comm = MPI.COMM_WORLD #CurrentMPIComm.get()
-rank = comm.rank
-size = comm.size
-
-if Nfiles%size < 1e-4:
-    Nslabs = int(Nfiles/size)
-else:
-    Nslabs = int(Nfiles/size)+1
-
-istart = Nslabs*rank
-mesh = ArrayMesh(np.zeros((Nmesh,Nmesh,Nmesh), dtype=np.float32), BoxSize=boxsize).compute()
-for i in range(istart, min(Nfiles, istart+Nslabs)):
-    sdelta1_ = np.load('/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/slab%d_sdelta1.npz' % (sim,str(z),Rf,i))
-    nabla2d1_ = np.load('/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/slab%d_nabla2d1.npz' % (sim,str(z),Rf,i))
-
-    for name in ['halo', 'field']:
-        cat = CompaSOHaloCatalog(
-            '/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/halo_info/halo_info_%03d.asdf' % (sim, z, i),
-            fields=[], load_subsamples='A_%s_rv' % name)
-        pos = cat.subsamples['pos']
-        del cat
-
-        sdelta1 = sdelta1_[name]/sigma_sdelta1
-        if not use_nabla2d1:
-            # interpolate to get the predicted halo field
-            f_delta1_interp = np.interp(sdelta1, data[ii,0], f_delta1, left=0., right=0.)
+    # bins
+    nbins_d1 = len(bin_edges_d1)-1
+    global nbins_q
+    global bin_edges_q_percentile
+    nbins_q = 1
+    folder = 'matrixA'
+    if qname in ['nabla2d1', 'G2']:
+        if qname == 'nabla2d1':
+            bin_edges_q_percentile = bin_edges_nabla2d1_percentile
         else:
-            nabla2d1 = nabla2d1_[name]/sigma_nabla2d1
-            f_delta1_interp = griddata(data[ii,:2], f_delta1, (sdelta1,nabla2d1), fill_value=0.)
-            #func = interp2d(d1_bins, nabla2d1_bins, f_delta1, fill_value=0.)
-            #f_delta1_interp = np.zeros(len(pos))
-            #for j in range(len(pos)):
-            #    f_delta1_interp[j] = func(sdelta1[j], nabla2d1[j])
+            bin_edges_q_percentile = bin_edges_G2_percentile
+        nbins_q = len(bin_edges_q_percentile)-1
+        folder += '_'+qname
+
+    # f solution
+    mean_f_delta1 = np.zeros(nbins_d1*nbins_q)
+    mean_f_delta1_qp = np.zeros(nbins_d1*nbins_q)
+    n = 0
+    if qname in ['nabla2d1', 'G2']:
+        fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d' % (qname,str(z),Rf,Nmesh)
+    else:
+        fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d' % (str(z),Rf,Nmesh)
+    for i in range(10):
+        try:
+            f_delta1 = np.loadtxt(
+                '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '.txt')[:,col]
+            mean_f_delta1 += f_delta1
+            f_delta1 = np.loadtxt(
+                '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '_qp.txt')[:,col]
+            mean_f_delta1_qp += f_delta1
+            n += 1
+        except:
+            continue
+    mean_f_delta1 /= n
+    mean_f_delta1_qp /= n
+
+    # calculate sigma_d1 and sigma_q
+    ic_path = '/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic_%d/' % N
+    # load in the smoothed delta_1 and calculate std
+    tmp = np.load(ic_path+'/sdelta1_Rf%.3g.npy' % Rf)
+    sigma_sdelta1 = np.std(tmp)
+    del tmp
+    # load in nabla^2 delta_1 or G2 and calculate mean and std
+    mean_q = None
+    sigma_q = None
+    if qname in ['nabla2d1', 'G2']:
+        tmp = np.load(ic_path+'/%s_Rf%.3g.npy' % (qname, Rf))
+        mean_q = np.mean(tmp)
+        sigma_q = np.std(tmp)
+        del tmp
+
+    outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
+
+    # create and run mesh
+    mesh = ArrayMesh(np.zeros((Nmesh_,Nmesh_,Nmesh_), dtype=np.float32), BoxSize=boxsize).compute()
+    mesh_qp = ArrayMesh(np.zeros((Nmesh_,Nmesh_,Nmesh_), dtype=np.float32), BoxSize=boxsize).compute()
+    for i in range(Nfiles):
+        pos, sdelta1, q, arr, _ = load_and_process_particles(i, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q, qname)
+
+        #f_delta1_interp = griddata(bins, f_delta1, (sdelta1,q), fill_value=0.)
+        #f_delta1_interp_qp = griddata(bins, f_delta1_qp, (sdelta1,nabla2d1), fill_value=0.)
+
+        f_delta1_interp = np.zeros(len(pos))
+        f_delta1_interp_qp = np.zeros(len(pos))
+        for m in range(nbins_d1):
+            if arr[m] == arr[m+1]: # empty bin
+                continue
+            q_ = q[arr[m]:arr[m+1]]
+            if qname in ['nabla2d1', 'G2']:
+                q_ = q[arr[m]:arr[m+1]]
+                bin_edges_q = np.percentile(q_, bin_edges_q_percentile)
+            else:
+                q_ = np.zeros(arr[m+1]-arr[m], dtype=np.float32)
+                bin_edges_q = np.linspace(-100, 100, nbins_q+1)
+            for n in range(nbins_q):
+                ii = (q_ >= bin_edges_q[n]) & (q_ < bin_edges_q[n+1])
+                if ii.sum() == 0: # empty bin
+                    continue
+                f_delta1_interp[arr[m]:arr[m+1]][ii] = mean_f_delta1[m*nbins_q+n]
+                f_delta1_interp_qp[arr[m]:arr[m+1]][ii] = mean_f_delta1_qp[m*nbins_q+n]
 
         # convert to mesh
         fac = len(pos)/(0.03*N0**3)
-        mesh += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp}).to_mesh(Nmesh=Nmesh, resampler='cic', BoxSize=boxsize).compute()*fac
+        mesh += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()*fac
+        mesh_qp += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp_qp}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()*fac
 
-# calculate mesh and save
-FieldMesh(mesh).save('/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/deltah_model_Nthres%d_Nmesh%d_cic.bigfile' % (sim, str(z), Rf, Nthres, Nmesh))
+    # calculate mesh and save
+    FieldMesh(mesh).save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s.bigfile' % (Nthres, Nmesh, Nmesh_, interp_method))
+    FieldMesh(mesh_qp).save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s_qp.bigfile' % (Nthres, Nmesh, Nmesh_, interp_method))
+
+if __name__ == '__main__':
+    main()
 
