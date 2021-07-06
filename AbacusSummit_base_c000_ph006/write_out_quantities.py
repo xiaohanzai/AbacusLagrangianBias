@@ -6,22 +6,24 @@ warnings.filterwarnings("ignore")
 import pyfftw
 import os
 
+sim, z, Rf = sys.argv[1:4] # e.g. AbacusSummit_base_c000_ph006
+z = float(z)
+Rf = float(Rf)
+
 boxsize = 2000.
-k0 = 2*np.pi/boxsize
 N0 = 6912
 N = 1152
 Nfiles = 34
+if 'small' in sim:
+    boxsize = 500.
+    N0 = 1728
+    N = 576
+    Nfiles = 1
+    sim = 'small/'+sim
 
-sim = sys.argv[1]
-z = float(sys.argv[2])
-if len(sys.argv) > 3:
-    Rf = float(sys.argv[3])
-    if len(sys.argv) > 4:
-        qs = sys.argv[4:]
-else:
-    qs = ['sdelta1', 'G2', 'nabla2d1']
-    cellsize = 5. # Mpc/h, cell size in final grid
-    Rf = cellsize/(2*np.pi)**0.5 # Gaussian smoothing
+qs = ['sdelta1', 'G2', 'nabla2d1']
+if len(sys.argv) > 4:
+    qs = sys.argv[4:]
 print('writing out quantities: ', qs)
 
 outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/' % (sim,str(z))

@@ -9,9 +9,6 @@ import sys
 import os
 
 # some important parameters
-boxsize = 2000.
-Nfiles = 34
-N = 1152
 interp_method = 'cic'
 
 # delta1 bins
@@ -85,12 +82,15 @@ def load_and_process_particles(islab, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, 
         q = q[ii_d1][ind]
 
     # indices in x direction of the grid points that are within xmin xmax
-    if islab != Nfiles-1:
-        ind_slab = calc_ind_slab(Nmesh, pos[:,0].min(), pos[:,0].max())
-    else:
-        ii = pos[:,0]>0.
-        ind_slab = np.concatenate((calc_ind_slab(Nmesh, pos[ii,0].min(), boxsize/2.)[:-2],
-            calc_ind_slab(Nmesh, -boxsize/2.+1e-3, pos[~ii,0].max())))
+    try:
+        if islab != Nfiles-1:
+            ind_slab = calc_ind_slab(Nmesh, pos[:,0].min(), pos[:,0].max())
+        else:
+            ii = pos[:,0]>0.
+            ind_slab = np.concatenate((calc_ind_slab(Nmesh, pos[ii,0].min(), boxsize/2.)[:-2],
+                calc_ind_slab(Nmesh, -boxsize/2.+1e-3, pos[~ii,0].max())))
+    except:
+        ind_slab = None
 
     return pos, sdelta1, q, arr, ind_slab
 
@@ -128,6 +128,17 @@ def main():
     z = float(z)
     Rf = float(Rf)
     Nmesh = int(Nmesh)
+
+    global boxsize
+    boxsize = 2000.
+    Nfiles = 34
+    N = 1152
+    if 'small' in sim:
+        boxsize = 500.
+        Nfiles = 1
+        N = 576
+        sim = 'small/'+sim
+
     if len(sys.argv) > 6:
         islabs = sys.argv[6:]
     else:

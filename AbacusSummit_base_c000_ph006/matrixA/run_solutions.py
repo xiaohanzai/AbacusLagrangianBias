@@ -15,13 +15,6 @@ from scipy.stats import norm
 
 interp_method = 'cic'
 
-# parameters about the sim
-boxsize = 2000.
-k0 = 2*np.pi/boxsize
-N0 = 6912
-N = 1152
-Nfiles = 34
-
 def calc_coadded_qs(path, Nmesh, interp_method='cic', remove_overlaps=(False, False),
                    direct_load=True, delta_hs=None, calc_M=True, **kwargs):
     '''
@@ -29,6 +22,9 @@ def calc_coadded_qs(path, Nmesh, interp_method='cic', remove_overlaps=(False, Fa
     '''
     M = None
     bs = None
+    Nfiles = 34
+    if 'small' in path:
+        Nfiles = 1
     for i in range(Nfiles):
         A, ind_slab = load_matrixA_slab(i, path, Nmesh, interp_method,
                             remove_overlaps=remove_overlaps, direct_load=direct_load, **kwargs)
@@ -85,11 +81,21 @@ def main():
     for i in range(len(Nthress)):
         Nthress[i] = int(Nthress[i])
 
+    global boxsize
+    global N0
+    boxsize = 2000.
+    N0 = 6912
+    if 'small' in sim:
+        boxsize = 500.
+        N0 = 1728
+        sim = 'small/'+sim
+
     folder = 'matrixA_nabla2d1'
     if qname == 'G2':
         folder = 'matrixA_G2'
-    path = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
-    outpath = path+'/nooverlap'
+    outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
+    if 'small' not in sim:
+        outpath += '/nooverlap'
         
     # load in snapshot
     cat = CompaSOHaloCatalog('/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/' % (sim, z),
@@ -126,12 +132,9 @@ def main():
                 * nparticles/ncell for b in bs]
 
     # write to disk
-    writepath = '../../'+sim
+    writepath = '../../'+sim+'/solutions'
     if not os.path.exists(writepath):
-        os.system('mkdir ' + writepath)
-    writepath += '/solutions'
-    if not os.path.exists(writepath):
-        os.system('mkdir ' + writepath)
+        os.system('mkdir -p ' + writepath)
     if qname == 'delta1':
         fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d.txt' % (str(z), Rf, Nmesh)
         fname_qp = 'f(delta1)_z%s_Rf%.3g_Nmesh%d_qp.txt' % (str(z), Rf, Nmesh)

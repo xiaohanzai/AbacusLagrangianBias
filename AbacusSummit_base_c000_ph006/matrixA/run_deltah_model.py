@@ -9,6 +9,7 @@ from nbodykit import setup_logging
 import matplotlib.pyplot as plt
 from abacusnbody.data.compaso_halo_catalog import CompaSOHaloCatalog
 import sys
+import os
 from scipy.interpolate import interp2d, griddata
 from run_matrixA import load_and_process_particles, bin_edges_d1, bin_edges_nabla2d1_percentile, bin_edges_G2_percentile
 
@@ -20,7 +21,7 @@ N0 = 6912
 interp_method = 'cic'
 
 def main():
-    sim, z, Rf, Nmesh, qname, Nmesh_, col, Nthres = sys.argv[1:]
+    sim, z, Rf, Nmesh, qname, Nmesh_, col, Nthres = sys.argv[1:9]
     # redshift, smoothing scale, mesh size
     z = float(z)
     Rf = float(Rf)
@@ -29,6 +30,10 @@ def main():
     # which columns of the file to work on and what Nthres it corresponds to
     col = int(col)
     Nthres = int(Nthres)
+    try:
+        sim2use = sys.argv[9] # use just one f solution; input the name of that sim
+    except:
+        sim2use = None # will average over multiple f
 
     # bins
     nbins_d1 = len(bin_edges_d1)-1
@@ -45,26 +50,32 @@ def main():
         folder += '_'+qname
 
     # f solution
-    mean_f_delta1 = np.zeros(nbins_d1*nbins_q)
-    mean_f_delta1_qp = np.zeros(nbins_d1*nbins_q)
-    n = 0
     if qname in ['nabla2d1', 'G2']:
         fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d' % (qname,str(z),Rf,Nmesh)
     else:
         fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d' % (str(z),Rf,Nmesh)
-    for i in range(10):
-        try:
-            f_delta1 = np.loadtxt(
-                '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '.txt')[:,col]
-            mean_f_delta1 += f_delta1
-            f_delta1 = np.loadtxt(
-                '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '_qp.txt')[:,col]
-            mean_f_delta1_qp += f_delta1
-            n += 1
-        except:
-            continue
-    mean_f_delta1 /= n
-    mean_f_delta1_qp /= n
+    if sim2use is None:
+        mean_f_delta1 = np.zeros(nbins_d1*nbins_q)
+        mean_f_delta1_qp = np.zeros(nbins_d1*nbins_q)
+        n = 0
+        for i in range(6):
+            try:
+                f_delta1 = np.loadtxt(
+                    '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '.txt')[:,col]
+                mean_f_delta1 += f_delta1
+                f_delta1 = np.loadtxt(
+                    '../../AbacusSummit_base_c000_ph00%d/solutions/' % i + fname + '_qp.txt')[:,col]
+                mean_f_delta1_qp += f_delta1
+                n += 1
+            except:
+                continue
+        mean_f_delta1 /= n
+        mean_f_delta1_qp /= n
+    else:
+        if 'small' in sim2use:
+            sim2use = 'small/'+sim2use
+        mean_f_delta1 = np.loadtxt('../../%s/solutions/' % sim2use + fname + '.txt')[:,col]
+        mean_f_delta1_qp = np.loadtxt('../../%s/solutions/' % sim2use + fname + '_qp.txt')[:,col]
 
     # calculate sigma_d1 and sigma_q
     ic_path = '/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic_%d/' % N
@@ -81,7 +92,9 @@ def main():
         sigma_q = np.std(tmp)
         del tmp
 
-    outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
+    outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder + '/' + sim2use
+    if not os.path.exists(outpath):
+        os.system('mkdir -p '+outpath)
 
     # create and run mesh
     mesh = ArrayMesh(np.zeros((Nmesh_,Nmesh_,Nmesh_), dtype=np.float32), BoxSize=boxsize).compute()
@@ -97,7 +110,6 @@ def main():
         for m in range(nbins_d1):
             if arr[m] == arr[m+1]: # empty bin
                 continue
-            q_ = q[arr[m]:arr[m+1]]
             if qname in ['nabla2d1', 'G2']:
                 q_ = q[arr[m]:arr[m+1]]
                 bin_edges_q = np.percentile(q_, bin_edges_q_percentile)

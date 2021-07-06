@@ -4,13 +4,7 @@ import os
 from nbodykit.lab import *
 from nbodykit import setup_logging, style
 
-# parameters about the sim
-boxsize = 2000.
-k0 = 2*np.pi/boxsize
-N0 = 6912
-N = 1152
-Nfiles = 34
-
+Nfiles = 34 # the small box doesn't need to call anything involving this?
 interp_method = 'cic'
 
 def _downsampleA(A, ind_slab, Nmesh, Nmesh_new, interp_method):
@@ -132,6 +126,11 @@ def main():
         Nmesh_new = int(sys.argv[6])
     except:
         Nmesh_new = None
+
+    if 'small' in sim:
+        global Nfiles
+        Nfiles = 1
+        sim = 'small/'+sim
 
     # saved to which folder
     folder = 'matrixA'

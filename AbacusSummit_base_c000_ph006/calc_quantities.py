@@ -3,20 +3,20 @@ import sys
 import pyfftw
 import asdf
 
+sim, Rf = sys.argv[1:3] # e.g. AbacusSummit_base_c000_ph006
+Rf = float(Rf)
+
 boxsize = 2000.
-k0 = 2*np.pi/boxsize
 N = 1152
+if 'small' in sim:
+    boxsize = 500.
+    N = 576
+    sim = 'small/'+sim
+k0 = 2*np.pi/boxsize
 
-sim = sys.argv[1] # e.g. AbacusSummit_base_c000_ph006
-
-if len(sys.argv) > 2:
-    Rf = float(sys.argv[2])
-    if len(sys.argv) > 3:
-        qs = sys.argv[3:]
-else:
-    cellsize = 5. # Mpc/h, cell size in final grid
-    Rf = cellsize/(2*np.pi)**0.5 # Gaussian smoothing
-    qs = ['sdelta1', 'G2', 'nabla2d1']
+qs = ['sdelta1', 'G2', 'nabla2d1']
+if len(sys.argv) > 3:
+    qs = sys.argv[3:]
 print('calculating: ', qs)
 
 # load in IC grid
