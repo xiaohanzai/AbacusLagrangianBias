@@ -130,6 +130,7 @@ def main():
     Nmesh = int(Nmesh)
 
     global boxsize
+    global Nfiles
     boxsize = 2000.
     Nfiles = 34
     N = 1152

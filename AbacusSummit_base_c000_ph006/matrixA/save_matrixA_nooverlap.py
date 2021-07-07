@@ -127,11 +127,6 @@ def main():
     except:
         Nmesh_new = None
 
-    if 'small' in sim:
-        global Nfiles
-        Nfiles = 1
-        sim = 'small/'+sim
-
     # saved to which folder
     folder = 'matrixA'
     if qname in ['nabla2d1', 'G2']:
