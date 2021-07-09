@@ -2,10 +2,10 @@
 Somehow, the parallel version of this code doesn't work...
 '''
 import numpy as np
-#from mpi4py import MPI
+from mpi4py import MPI
 from nbodykit.lab import *
 from nbodykit import setup_logging
-#from nbodykit import CurrentMPIComm
+from nbodykit import CurrentMPIComm
 import matplotlib.pyplot as plt
 from abacusnbody.data.compaso_halo_catalog import CompaSOHaloCatalog
 import sys
@@ -19,6 +19,10 @@ Nfiles = 34
 N = 1152
 N0 = 6912
 interp_method = 'cic'
+
+comm = MPI.COMM_WORLD #CurrentMPIComm.get()
+rank = comm.rank
+size = comm.size
 
 tab = {0: 150, 1: 500, 2: 1000, -1: 3000, 3: 3000} # column of f file -> Nthres
 
@@ -73,14 +77,11 @@ def main():
                 continue
         mean_f_delta1 /= n
         mean_f_delta1_qp /= n
-        print('using solution averaged over %d sims' % n)
     else:
         if 'small' in sim2use:
             sim2use = 'small/'+sim2use
-        tmp = '../../%s/solutions/' % sim2use + fname
-        mean_f_delta1 = np.loadtxt(tmp + '.txt')[:,col]
-        mean_f_delta1_qp = np.loadtxt(tmp + '_qp.txt')[:,col]
-        print('using solutions: ' + tmp)
+        mean_f_delta1 = np.loadtxt('../../%s/solutions/' % sim2use + fname + '.txt')[:,col]
+        mean_f_delta1_qp = np.loadtxt('../../%s/solutions/' % sim2use + fname + '_qp.txt')[:,col]
 
     # calculate sigma_d1 and sigma_q
     ic_path = '/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic_%d/' % N
@@ -98,17 +99,19 @@ def main():
         del tmp
 
     outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder + '/' + sim2use
-    if not os.path.exists(outpath):
+    if rank == 0 and not os.path.exists(outpath):
         os.system('mkdir -p '+outpath)
 
-    # create and run mesh
-    mesh = ArrayMesh(np.zeros((Nmesh_,Nmesh_,Nmesh_), dtype=np.float32), BoxSize=boxsize).compute()
-    mesh_qp = ArrayMesh(np.zeros((Nmesh_,Nmesh_,Nmesh_), dtype=np.float32), BoxSize=boxsize).compute()
-    for i in range(Nfiles):
-        pos, sdelta1, q, arr, _ = load_and_process_particles(i, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q, qname)
+    if Nfiles%size < 1e-4:
+        Nslabs = int(Nfiles/size)
+    else:
+        Nslabs = int(Nfiles/size)+1
+    istart = Nslabs*rank
 
-        #f_delta1_interp = griddata(bins, f_delta1, (sdelta1,q), fill_value=0.)
-        #f_delta1_interp_qp = griddata(bins, f_delta1_qp, (sdelta1,nabla2d1), fill_value=0.)
+    # create and run mesh
+    pos_all = f_delta1_interp_all = f_delta1_interp_all_qp = None
+    for i in range(istart, min(Nfiles, istart+Nslabs)):
+        pos, sdelta1, q, arr, _ = load_and_process_particles(i, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, sigma_q, qname)
 
         f_delta1_interp = np.zeros(len(pos))
         f_delta1_interp_qp = np.zeros(len(pos))
@@ -128,10 +131,19 @@ def main():
                 f_delta1_interp[arr[m]:arr[m+1]][ii] = mean_f_delta1[m*nbins_q+n]
                 f_delta1_interp_qp[arr[m]:arr[m+1]][ii] = mean_f_delta1_qp[m*nbins_q+n]
 
-        # convert to mesh
-        fac = len(pos)/(0.03*N0**3)
-        mesh += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()*fac
-        mesh_qp += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp_qp}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()*fac
+        del q, arr, sdelta1
+        if pos_all is not None:
+            pos_all = np.concatenate((pos_all, pos))
+            f_delta1_interp_all = np.concatenate((f_delta1_interp_all, f_delta1_interp))
+            f_delta1_interp_qp_all = np.concatenate((f_delta1_interp_qp_all, f_delta1_interp_qp))
+        else:
+            pos_all = pos
+            f_delta1_interp_all = f_delta1_interp
+            f_delta1_interp_qp_all = f_delta1_interp_qp
+        del f_delta1_interp, f_delta1_interp_qp
+
+    mesh = ArrayCatalog({'Position': pos_all, 'Value': f_delta1_interp_all}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()
+    mesh_qp = ArrayCatalog({'Position': pos_all, 'Value': f_delta1_interp_qp_all}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()
 
     # calculate mesh and save
     FieldMesh(mesh).save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s.bigfile' % (Nthres, Nmesh, Nmesh_, interp_method))
