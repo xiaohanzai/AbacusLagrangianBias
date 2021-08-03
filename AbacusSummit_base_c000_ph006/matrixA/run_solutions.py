@@ -9,14 +9,16 @@ sys.path.append('../')
 sys.path.append('../../')
 from cosmology_functions import *
 from save_matrixA_nooverlap import load_matrixA_slab
+from run_matrixA import bin_edges_d1, bin_edges_nabla2d1_percentile, bin_edges_G2_percentile
 import os
 from qpsolvers import solve_qp
 from scipy.stats import norm
+from cosmology_functions import calc_k_grid
 
 interp_method = 'cic'
 
 def calc_coadded_qs(path, Nmesh, interp_method='cic', remove_overlaps=(False, False),
-                   direct_load=True, delta_hs=None, calc_M=True, **kwargs):
+                   direct_load=True, delta_hs=None, calc_M=True, kmax=None, **kwargs):
     '''
     Load A for each slab and calculate the coadded M and/or b.
     '''
@@ -27,7 +29,7 @@ def calc_coadded_qs(path, Nmesh, interp_method='cic', remove_overlaps=(False, Fa
         Nfiles = 1
     for i in range(Nfiles):
         A, ind_slab = load_matrixA_slab(i, path, Nmesh, interp_method,
-                            remove_overlaps=remove_overlaps, direct_load=direct_load, **kwargs)
+            remove_overlaps=remove_overlaps, direct_load=direct_load, kmax=kmax, **kwargs)
         if calc_M:
             if i == 0:
                 M = np.dot(A, A.T)
@@ -60,12 +62,11 @@ def calc_reduced_M(M):
     return M_, D, ii_empty
 
 def calc_allbins_pdf(qname):
-    bin_edges_d1 = np.linspace(-4, 5, 40+1)
     allbins_pdf = norm.cdf(bin_edges_d1[1:]) - norm.cdf(bin_edges_d1[:-1])
     if qname == 'nabla2d1':
-        bin_edges_q_percentile = np.array([0, 5, 35, 65, 95, 100])
+        bin_edges_q_percentile = bin_edges_nabla2d1_percentile
     elif qname == 'G2':
-        bin_edges_q_percentile = np.array([0, 10, 30, 70, 90, 100])
+        bin_edges_q_percentile = bin_edges_G2_percentile
     else:
         return allbins_pdf
     allbins_pdf = allbins_pdf.reshape(-1,1) * (bin_edges_q_percentile[1:] - bin_edges_q_percentile[:-1]).reshape(1,-1)
@@ -73,13 +74,17 @@ def calc_allbins_pdf(qname):
     return allbins_pdf.reshape(-1)
 
 def main():
-    sim, z, Rf, Nmesh, qname = sys.argv[1:6]
-    Nthress = sys.argv[6:]
+    sim, z, Rf, Nmesh, qname, kmax = sys.argv[1:7]
+    Nthress = sys.argv[7:]
     z = float(z)
     Rf = float(Rf)
     Nmesh = int(Nmesh)
     for i in range(len(Nthress)):
         Nthress[i] = int(Nthress[i])
+
+    kmax = float(kmax)
+    if kmax >= 50.:
+        kmax = None
 
     global boxsize
     global N0
@@ -102,12 +107,21 @@ def main():
                          fields=['N', 'x_com', 'r100_com'])
 
     # calculate the delta_h vectors
+    if kmax:
+        kx, ky, kz = calc_k_grid(boxsize, Nmesh)
+        k2 = kx**2 + ky**2 + kz**2
+        ii = k2 > kmax**2
+        del kx, ky, kz, k2
     delta_hs = [None]*len(Nthress)
     for i in range(len(Nthress)):
         Nthres = Nthress[i]
         ii_h = (cat.halos['N'] > Nthres)
         delta_h = ArrayCatalog({'Position': cat.halos[ii_h]['x_com'], 'Value': cat.halos[ii_h]['N']}).to_mesh(Nmesh=Nmesh, BoxSize=boxsize, resampler=interp_method).compute()
         delta_h = delta_h/np.mean(delta_h)-1.
+        if kmax:
+            delta_h = pyfftw.interfaces.numpy_fft.rfftn(delta_h)
+            delta_h[ii] = 0.
+            delta_h = pyfftw.interfaces.numpy_fft.irfftn(delta_h)
         delta_hs[i] = delta_h
 
     nparticles = 0.03*N0**3
@@ -115,11 +129,11 @@ def main():
 
     # load in matrices and calculate solutions
     if qname == 'delta1':
-        M, bs = calc_coadded_qs(outpath, Nmesh, interp_method,
-                sum_nabla2d1_bins=True, nbins_nabla2d1=5,
+        M, bs = calc_coadded_qs(outpath, Nmesh, interp_method, kmax=kmax,
+                sum_nabla2d1_bins=True, nbins_nabla2d1=len(bin_edges_nabla2d1_percentile)-1,
                 direct_load=True, calc_M=True, delta_hs=delta_hs)
     else:
-        M, bs = calc_coadded_qs(outpath, Nmesh, interp_method,
+        M, bs = calc_coadded_qs(outpath, Nmesh, interp_method, kmax=kmax,
                 direct_load=True, calc_M=True, delta_hs=delta_hs)
     M_, D, ii_empty = calc_reduced_M(M)
 
@@ -135,12 +149,17 @@ def main():
     writepath = '../../'+sim+'/solutions'
     if not os.path.exists(writepath):
         os.system('mkdir -p ' + writepath)
+    tmp = ''
+    if kmax:
+        tmp = '_kmax%.2f' % kmax
     if qname == 'delta1':
-        fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d.txt' % (str(z), Rf, Nmesh)
-        fname_qp = 'f(delta1)_z%s_Rf%.3g_Nmesh%d_qp.txt' % (str(z), Rf, Nmesh)
+        fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d%s' % (str(z), Rf, Nmesh, tmp)
+        fname_qp = 'f(delta1)_z%s_Rf%.3g_Nmesh%d%s_qp' % (str(z), Rf, Nmesh, tmp)
     else:
-        fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d.txt' % (qname, str(z), Rf, Nmesh)
-        fname_qp = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d_qp.txt' % (qname, str(z), Rf, Nmesh)
+        fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d%s' % (qname, str(z), Rf, Nmesh, tmp)
+        fname_qp = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d%s_qp' % (qname, str(z), Rf, Nmesh, tmp)
+    fname += '.txt'
+    fname_qp += '.txt'
     for fname_, f_delta1s_ in zip([fname, fname_qp], [f_delta1s, f_delta1s_qp]):
         with open(writepath+'/'+fname_, 'w') as f:
             f.write('# N>')

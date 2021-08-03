@@ -4,7 +4,6 @@ import os
 from nbodykit.lab import *
 from nbodykit import setup_logging, style
 
-Nfiles = 34 # the small box doesn't need to call anything involving this?
 interp_method = 'cic'
 
 def _downsampleA(A, ind_slab, Nmesh, Nmesh_new, interp_method):
@@ -39,7 +38,7 @@ def _downsampleA(A, ind_slab, Nmesh, Nmesh_new, interp_method):
             A_new[m] = A_new[m]/np.sum(Am)*np.sum(A[m]) # preserve sum
     return A_new, ind_slab_new
 
-def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(False, False), direct_load=False, Nmesh_new=None, **kwargs):
+def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(False, False), direct_load=False, kmax=None, Nmesh_new=None, **kwargs):
     '''
     Load the matrix A for a single slab.  Take care of the boundaries.
     If sum up the nabla2d1 or G2 bins, get the matrix A assuming f(delta1).
@@ -56,7 +55,10 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
         nbins_q = kwargs['nbins_G2']
 
     Nmesh2 = Nmesh**2
-    with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab, Nmesh, interp_method)) as tmp:
+    fname = path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab, Nmesh, interp_method)
+    if kmax: # direct load only
+        fname = path + '/matrixA_slab%d_Nmesh%d_%s_kmax%.2f.npz' % (islab, Nmesh, interp_method, kmax)
+    with np.load(fname) as tmp:
         A_ = tmp['A']
         ind_slab = tmp['ind_slab']
     if sum_q_bins:
@@ -74,32 +76,33 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
     # left and right
     imin = 0
     imax = len(ind_slab)
-    for l in range(2):
-        islab_ = (islab-(-1)**l)%Nfiles
-        remove = remove_overlaps[l]
-        with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab_, Nmesh, interp_method)) as tmp:
-            A1_ = tmp['A']
-            ind_slab1 = tmp['ind_slab']
-        if sum_q_bins:
-            A1 = np.zeros_like(A)
-            for i in range(nbins_q):
-                A1 += A1_[i::nbins_q]
-            del A1_
-        else:
-            A1 = A1_
-        for i,j in enumerate(ind_slab1):
-            # find the overlaps
-            ind = np.where(ind_slab == j)[0]
-            if len(ind) > 0:
-                ind = ind[0]
-                if not remove:
-                    A[:,ind*Nmesh2:(ind+1)*Nmesh2] += A1[:,i*Nmesh2:(i+1)*Nmesh2]
-                else:
-                    if l == 0: # left
-                        imin = ind+1
-                    else: # right
-                        if imax > ind:
-                            imax = ind
+    if 'small' not in path:
+        for l in range(2):
+            islab_ = (islab-(-1)**l)%Nfiles
+            remove = remove_overlaps[l]
+            with np.load(path + '/matrixA_slab%d_Nmesh%d_%s.npz' % (islab_, Nmesh, interp_method)) as tmp:
+                A1_ = tmp['A']
+                ind_slab1 = tmp['ind_slab']
+            if sum_q_bins:
+                A1 = np.zeros_like(A)
+                for i in range(nbins_q):
+                    A1 += A1_[i::nbins_q]
+                del A1_
+            else:
+                A1 = A1_
+            for j in ind_slab1:
+                # find the overlaps
+                ind = np.where(ind_slab == j)[0]
+                if len(ind) > 0:
+                    ind = ind[0]
+                    if not remove:
+                        A[:,ind*Nmesh2:(ind+1)*Nmesh2] += A1[:,i*Nmesh2:(i+1)*Nmesh2]
+                    else:
+                        if l == 0: # left
+                            imin = ind+1
+                        else: # right
+                            if imax > ind:
+                                imax = ind
     return A[:, imin*Nmesh2:imax*Nmesh2], ind_slab[imin:imax]
 
 def save_nooverlap(path, Nmesh):
@@ -126,6 +129,12 @@ def main():
         Nmesh_new = int(sys.argv[6])
     except:
         Nmesh_new = None
+
+    global Nfiles
+    Nfiles = 34
+    if 'small' in sim:
+        Nfiles = 1
+        sim = 'small/'+sim
 
     # saved to which folder
     folder = 'matrixA'

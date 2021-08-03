@@ -82,13 +82,16 @@ def load_and_process_particles(islab, sim, z, Rf, Nmesh, sigma_sdelta1, mean_q, 
         q = q[ii_d1][ind]
 
     # indices in x direction of the grid points that are within xmin xmax
-    try:
-        if islab != Nfiles-1:
-            ind_slab = calc_ind_slab(Nmesh, pos[:,0].min(), pos[:,0].max())
+    try: # this function is called in other scripts so want to avoid trouble...
+        if Nfiles == 1:
+            ind_slab = np.linspace(0, Nmesh-1, Nmesh, dtype=int)
         else:
-            ii = pos[:,0]>0.
-            ind_slab = np.concatenate((calc_ind_slab(Nmesh, pos[ii,0].min(), boxsize/2.)[:-2],
-                calc_ind_slab(Nmesh, -boxsize/2.+1e-3, pos[~ii,0].max())))
+            if islab != Nfiles-1:
+                ind_slab = calc_ind_slab(Nmesh, pos[:,0].min(), pos[:,0].max())
+            else:
+                ii = pos[:,0]>0.
+                ind_slab = np.concatenate((calc_ind_slab(Nmesh, pos[ii,0].min(), boxsize/2.)[:-2],
+                    calc_ind_slab(Nmesh, -boxsize/2.+1e-3, pos[~ii,0].max())))
     except:
         ind_slab = None
 
