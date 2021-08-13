@@ -101,7 +101,7 @@ def main():
     outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
     if 'small' not in sim:
         outpath += '/nooverlap'
-        
+
     # load in snapshot
     cat = CompaSOHaloCatalog('/mnt/store2/bigsims/AbacusSummit/%s/halos/z%.3f/' % (sim, z),
                          fields=['N', 'x_com', 'r100_com'])

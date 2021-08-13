@@ -22,7 +22,7 @@ interp_method = 'cic'
 tab = {0: 150, 1: 500, 2: 1000, -1: 3000, 3: 3000} # column of f file -> Nthres
 
 def main():
-    sim, z, Rf, Nmesh, qname, Nmesh_, col = sys.argv[1:8]
+    sim, z, Rf, Nmesh, qname, Nmesh_, col, kmax = sys.argv[1:9]
     # redshift, smoothing scale, mesh size
     z = float(z)
     Rf = float(Rf)
@@ -31,8 +31,11 @@ def main():
     # which columns of the file to work on and what Nthres it corresponds to
     col = int(col)
     Nthres = tab[col]
+    kmax = float(kmax)
+    if kmax >= 50.:
+        kmax = None
     try:
-        sim2use = sys.argv[8] # use just one f solution; input the name of that sim
+        sim2use = sys.argv[9] # use just one f solution; input the name of that sim
     except:
         sim2use = '' # will average over multiple f
 
@@ -54,6 +57,8 @@ def main():
         fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d' % (qname,str(z),Rf,Nmesh)
     else:
         fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d' % (str(z),Rf,Nmesh)
+    if kmax:
+        fname += '_kmax%.2f' % kmax
     if not sim2use:
         mean_f_delta1 = np.zeros(nbins_d1*nbins_q)
         mean_f_delta1_qp = np.zeros(nbins_d1*nbins_q)
@@ -69,13 +74,16 @@ def main():
                 n += 1
             except:
                 continue
+        print('using solution averaged over %d sims' % n)
         mean_f_delta1 /= n
         mean_f_delta1_qp /= n
     else:
         if 'small' in sim2use:
             sim2use = 'small/'+sim2use
-        mean_f_delta1 = np.loadtxt('../../%s/solutions/' % sim2use + fname + '.txt')[:,col]
-        mean_f_delta1_qp = np.loadtxt('../../%s/solutions/' % sim2use + fname + '_qp.txt')[:,col]
+        tmp = '../../%s/solutions/' % sim2use + fname
+        mean_f_delta1 = np.loadtxt(tmp + '.txt')[:,col]
+        mean_f_delta1_qp = np.loadtxt(tmp + '_qp.txt')[:,col]
+        print('using solution: ' + tmp)
 
     path = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
     if qname in ['nabla2d1', 'G2']:
@@ -102,8 +110,11 @@ def main():
     outpath = path+'/'+sim2use
     if not os.path.exists(outpath):
         os.system('mkdir -p '+outpath)
-    np.save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s' % (Nthres, Nmesh, Nmesh_, interp_method), mesh)
-    np.save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s_qp' % (Nthres, Nmesh, Nmesh_, interp_method), mesh_qp)
+    fname = '/deltah_model_Nthres%d_Nmesh%d_%d_%s' % (Nthres, Nmesh, Nmesh_, interp_method)
+    if kmax:
+        fname += '_kmax%.2f' % kmax
+    np.save(outpath+fname, mesh)
+    np.save(outpath+fname+'_qp', mesh_qp)
 
 if __name__ == '__main__':
     main()

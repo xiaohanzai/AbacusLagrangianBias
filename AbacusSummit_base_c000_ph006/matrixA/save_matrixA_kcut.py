@@ -29,7 +29,9 @@ def calc_A_kcut(boxsize, Nmesh, path, kmax, nbins, Nfiles):
         nbatches = 1
     print(nbatches, nbins_)
 
-    outpath = path + '/nooverlap'
+    outpath = path
+    if 'small' not in path:
+        outpath += '/nooverlap'
     if not os.path.exists(outpath):
         os.mkdir(outpath)
     remove_overlaps=(False, True)
@@ -120,42 +122,6 @@ def main():
     path = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
 
     calc_A_kcut(boxsize, Nmesh, path, kmax, nbins, Nfiles)
-
-# def main():
-#     sim, z, Rf, Nmesh, qname, kmax = sys.argv[1:7]
-#     # redshift, smoothing scale, mesh size
-#     z = float(z)
-#     Rf = float(Rf)
-#     Nmesh = int(Nmesh)
-#     kmax = float(kmax)
-#
-#     boxsize = 2000.
-#     Nfiles = 34
-#     if 'small' in sim:
-#         boxsize = 500.
-#         Nfiles = 1
-#         sim = 'small/'+sim
-#
-#     folder = 'matrixA'
-#     if qname in ['nabla2d1', 'G2']:
-#        folder += '_'+qname
-#     outpath = '/mnt/store2/xwu/AbacusSummit/%s/z%s_tilde_operators_nbody/Rf%.3g/' % (sim, str(z), Rf) + folder
-#
-#     kx, ky, kz = calc_k_grid(boxsize, Nmesh)
-#     k2 = kx**2 + ky**2 + kz**2
-#     ii = k2 > kmax**2
-#     del kx, ky, kz, k2
-#     # I would only deal with the small boxes for now
-#     islab = 0
-#     A, ind_slab = load_matrixA_slab(islab, outpath, Nmesh, interp_method=interp_method, direct_load=True)
-#     nbins = A.shape[0]
-#     for i in range(nbins):
-#         A_ = A[i].reshape(Nmesh,Nmesh,Nmesh)
-#         A_ = pyfftw.interfaces.numpy_fft.rfftn(A_)
-#         A_[ii] = 0
-#         A[i] = pyfftw.interfaces.numpy_fft.irfftn(A_).reshape(-1)
-#
-#     np.savez_compressed(outpath + '/matrixA_slab%d_Nmesh%d_%s_kmax%.2f' % (islab, Nmesh, interp_method, kmax), A=A, ind_slab=ind_slab)
 
 if __name__ == '__main__':
     main()

@@ -23,7 +23,7 @@ interp_method = 'cic'
 tab = {0: 150, 1: 500, 2: 1000, -1: 3000, 3: 3000} # column of f file -> Nthres
 
 def main():
-    sim, z, Rf, Nmesh, qname, Nmesh_, col = sys.argv[1:8]
+    sim, z, Rf, Nmesh, qname, Nmesh_, col, kmax = sys.argv[1:9]
     # redshift, smoothing scale, mesh size
     z = float(z)
     Rf = float(Rf)
@@ -32,8 +32,11 @@ def main():
     # which columns of the file to work on and what Nthres it corresponds to
     col = int(col)
     Nthres = tab[col]
+    kmax = float(kmax)
+    if kmax >= 50.:
+        kmax = None
     try:
-        sim2use = sys.argv[8] # use just one f solution; input the name of that sim
+        sim2use = sys.argv[9] # use just one f solution; input the name of that sim
     except:
         sim2use = '' # will average over multiple f
 
@@ -56,6 +59,8 @@ def main():
         fname = 'f(delta1,%s)_z%s_Rf%.3g_Nmesh%d' % (qname,str(z),Rf,Nmesh)
     else:
         fname = 'f(delta1)_z%s_Rf%.3g_Nmesh%d' % (str(z),Rf,Nmesh)
+    if kmax:
+        fname += '_kmax%.2f' % kmax
     if not sim2use:
         mean_f_delta1 = np.zeros(nbins_d1*nbins_q)
         mean_f_delta1_qp = np.zeros(nbins_d1*nbins_q)
@@ -71,16 +76,16 @@ def main():
                 n += 1
             except:
                 continue
+        print('using solution averaged over %d sims' % n)
         mean_f_delta1 /= n
         mean_f_delta1_qp /= n
-        print('using solution averaged over %d sims' % n)
     else:
         if 'small' in sim2use:
             sim2use = 'small/'+sim2use
         tmp = '../../%s/solutions/' % sim2use + fname
         mean_f_delta1 = np.loadtxt(tmp + '.txt')[:,col]
         mean_f_delta1_qp = np.loadtxt(tmp + '_qp.txt')[:,col]
-        print('using solutions: ' + tmp)
+        print('using solution: ' + tmp)
 
     # calculate sigma_d1 and sigma_q
     ic_path = '/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic_%d/' % N
@@ -134,8 +139,11 @@ def main():
         mesh_qp += ArrayCatalog({'Position': pos, 'Value': f_delta1_interp_qp}).to_mesh(Nmesh=Nmesh_, resampler=interp_method, BoxSize=boxsize).compute()*fac
 
     # calculate mesh and save
-    FieldMesh(mesh).save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s.bigfile' % (Nthres, Nmesh, Nmesh_, interp_method))
-    FieldMesh(mesh_qp).save(outpath+'/deltah_model_Nthres%d_Nmesh%d_%d_%s_qp.bigfile' % (Nthres, Nmesh, Nmesh_, interp_method))
+    fname = '/deltah_model_Nthres%d_Nmesh%d_%d_%s' % (Nthres, Nmesh, Nmesh_, interp_method)
+    if kmax:
+        fname += '_kmax%.2f' % kmax
+    FieldMesh(mesh).save(outpath+fname+'.bigfile')
+    FieldMesh(mesh_qp).save(outpath+fname+'_qp.bigfile')
 
 if __name__ == '__main__':
     main()

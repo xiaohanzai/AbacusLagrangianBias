@@ -90,7 +90,7 @@ def load_matrixA_slab(islab, path, Nmesh, interp_method='cic', remove_overlaps=(
                 del A1_
             else:
                 A1 = A1_
-            for j in ind_slab1:
+            for i,j in enumerate(ind_slab1):
                 # find the overlaps
                 ind = np.where(ind_slab == j)[0]
                 if len(ind) > 0:
