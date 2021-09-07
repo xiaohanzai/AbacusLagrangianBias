@@ -1,19 +1,22 @@
 import numpy as np
 import sys
 import pyfftw
+import asdf
+
+sim, Rf = sys.argv[1:3] # e.g. AbacusSummit_base_c000_ph006
+Rf = float(Rf)
 
 boxsize = 2000.
+N = 1152
+if 'small' in sim:
+    boxsize = 500.
+    N = 576
+    sim = 'small/'+sim
 k0 = 2*np.pi/boxsize
-N = 1728
 
 qs = ['sdelta1', 'G2', 'nabla2d1']
-if len(sys.argv) > 1:
-    Rf = float(sys.argv[1])
-    if len(sys.argv) > 2:
-        qs = sys.argv[2:]
-else:
-    cellsize = 5. # Mpc/h, cell size in final grid
-    Rf = cellsize/(2*np.pi)**0.5 # Gaussian smoothing
+if len(sys.argv) > 3:
+    qs = sys.argv[3:]
 print('calculating: ', qs)
 
 # load in IC grid
@@ -30,8 +33,9 @@ ky = ky.reshape(1,-1)*k0
 k2xy = kx**2 + ky**2
 k2xy[0,0] = 1e-6
 
-delta1 = np.fromfile('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/density1728',
-    dtype=np.float32).reshape(N,N,N)
+path = '/mnt/store2/xwu/AbacusSummit/%s/ic_%d/' % (sim,N)
+af = asdf.open(path+'/ic_dens_N%d.asdf' % N)
+delta1 = af['data']['density']
 if Rf < 1e-4:
     sdelta1 = delta1
     delta1 = pyfftw.interfaces.numpy_fft.rfftn(delta1)
@@ -43,7 +47,7 @@ else:
         delta1[:,:,i] *= np.exp(-k2*Rf**2/2.)
     sdelta1 = pyfftw.interfaces.numpy_fft.irfftn(delta1)
 if 'sdelta1' in qs:
-    np.save('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/sdelta1_Rf%.3g' % Rf, sdelta1)
+    np.save(path+'/sdelta1_Rf%.3g' % Rf, sdelta1)
 
 if 'nabla2d1' in qs:
     tmp = delta1*0.
@@ -51,7 +55,7 @@ if 'nabla2d1' in qs:
         kz = i*k0
         k2 = k2xy+kz**2
         tmp[:,:,i] = -delta1[:,:,i]*k2
-    np.save('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/nabla2d1_Rf%.3g' % Rf, pyfftw.interfaces.numpy_fft.irfftn(tmp))
+    np.save(path+'/nabla2d1_Rf%.3g' % Rf, pyfftw.interfaces.numpy_fft.irfftn(tmp))
     del tmp
 
 if 'G2' in qs:
@@ -90,5 +94,5 @@ if 'G2' in qs:
     G2 += 2*pyfftw.interfaces.numpy_fft.irfftn(G2tmp)**2
     del G2tmp, delta1
 
-    np.save('/mnt/store2/xwu/AbacusSummit/AbacusSummit_base_c000_ph006/ic/G2_Rf%.3g' % Rf, G2)
+    np.save(path+'/G2_Rf%.3g' % Rf, G2)
 
