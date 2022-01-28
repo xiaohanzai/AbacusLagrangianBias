@@ -12,9 +12,9 @@ import os
 from NNB_NN import *
 from particle_functions import *
 
-_path = '/mnt/store2/'
+_path = '/mnt/marvin2/'
 if not os.path.exists(_path):
-    _path = '/mnt/marvin2/'
+    _path = '/mnt/store2/'
 
 def main():
     sim, z, Nmesh = sys.argv[1:]

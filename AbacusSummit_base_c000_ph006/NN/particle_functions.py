@@ -4,9 +4,9 @@ import os
 
 
 def get_ic_path(sim):
-    ic_path = '/mnt/store2/'
+    ic_path = '/mnt/marvin2/'
     if not os.path.exists(ic_path):
-        ic_path = '/mnt/marvin2/'
+        ic_path = '/mnt/store2/'
     ic_path += 'xwu/AbacusSummit/'
     N = 1152
     if 'small' in sim:
@@ -17,9 +17,9 @@ def get_ic_path(sim):
 
 
 def load_particle_data(islab, sim, z, Rf, qname):
-    _path = '/mnt/store2'
+    _path = '/mnt/marvin2'
     if not os.path.exists(_path):
-        _path = '/mnt/marvin2'
+        _path = '/mnt/store2'
 
     if 'small' in sim:
         if 'small/' not in sim:

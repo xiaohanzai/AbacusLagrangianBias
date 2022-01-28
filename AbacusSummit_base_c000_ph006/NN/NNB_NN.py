@@ -5,14 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+# from tqdm import tqdm
 from nbodykit.lab import *
 from NNB_functions import *
 from particle_functions import *
 
 
 class MyDataset(Dataset):
-    def __init__(self, arg1, boxsize, Nmesh, deltah_true, Npart_per_cell, N_realizations, features):
+    def __init__(self, arg1, boxsize, Nmesh, deltah_true, Npart_per_cell, N_realizations, features, subsample=False):
         '''
         arg1 is either the particle positions or the particle list in cells.
         All the particle features should be input at the end, where features is a list or np array, where if the latter, the number of rows = number of features.
@@ -37,17 +37,21 @@ class MyDataset(Dataset):
                         ind_[n*Npart_per_cell:(n+1)*Npart_per_cell]]
 
         self.deltah_true = deltah_true.reshape(-1)
-        self.cell_inds = list(self.part_list_in_cell.keys())
+        self.cell_inds = np.arange(0, Nmesh**3)
+        if subsample:
+            self.cell_inds = self.cell_inds[::8]
+        self.cell_inds = self.cell_inds.tolist()
 
     def __len__(self):
-        return len(self.part_list_in_cell.keys()) # the number of cells
+        return len(self.cell_inds) # the number of cells
 
     def __getitem__(self, i):
         '''
         Get the particle data within the cell specified by inx, and the corresponding true deltah of that cell.
         '''
-        inds = self.part_list_in_cell[i]
-        return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[i]]), torch.Tensor([self.deltah_true[i]])
+        j = self.cell_inds[i]
+        inds = self.part_list_in_cell[j]
+        return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[j]]), torch.Tensor([self.deltah_true[j]])
 
 
 class MyNetwork(nn.Module):
@@ -143,6 +147,27 @@ def train(model, inputs, facs, deltah_true, optimizer, logf=True,
 
 
 # functions for calculating the loss and deltah_model
+def calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_method, logf=True, fac=1., minus1=False):
+    '''
+    Similar to calc_deltah_model_NN, but using nbodykit (this is a lot faster).
+    Can be used in calc_deltah_model_nbodykit or used separately.
+    If small box, fac=1, minus1=True.
+    '''
+    fs = np.zeros(len(pos))
+    i = 0
+    while i<len(pos):
+        j = min(len(pos), i+100000)
+        fs[i:j] = model(torch.tensor(features.T[np.newaxis,i:j,:])).detach().numpy().reshape(-1)
+        i = j
+    if logf:
+        fs = 10**fs
+
+    # convert to mesh
+    mesh = ArrayCatalog({'Position': pos, 'Value': fs}).to_mesh(Nmesh=Nmesh, resampler=interp_method, BoxSize=boxsize).compute()*fac
+    if minus1:
+        mesh -= 1.
+    return mesh
+
 def calc_deltah_model_nbodykit(model, sim, z, Rfs, qs, Nmesh, interp_method, logf=True):
     '''
     Similar to calc_deltah_model_NN, but using nbodykit (this is a lot faster).
@@ -160,19 +185,8 @@ def calc_deltah_model_nbodykit(model, sim, z, Rfs, qs, Nmesh, interp_method, log
     Nparticles = 0
     for i in range(Nfiles):
         pos, features = load_particle_features(sim, z, i, Rfs, qs)
-
-        fs = np.zeros(len(pos))
-        i = 0
-        while i<len(pos):
-            j = min(len(pos), i+100000)
-            fs[i:j] = model(torch.tensor(features.T[np.newaxis,i:j,:])).detach().numpy().reshape(-1)
-            i = j
-        if logf:
-            fs = 10**fs
-
-        # convert to mesh
-        fac = len(pos)/(0.03*N0**3)
-        mesh += ArrayCatalog({'Position': pos, 'Value': fs}).to_mesh(Nmesh=Nmesh, resampler=interp_method, BoxSize=boxsize).compute()*fac
+        mesh += calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_method, logf=logf, fac=len(pos)/(0.03*N0**3))
+    mesh -= 1.
 
     return mesh
 
