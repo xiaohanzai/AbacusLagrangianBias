@@ -53,6 +53,51 @@ class MyDataset(Dataset):
         inds = self.part_list_in_cell[j]
         return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[j]]), torch.Tensor([self.deltah_true[j]])
 
+# class MyDataset(Dataset):
+#     def __init__(self, part_list_in_cell, boxsize, Nmesh, deltah_true, subsample_fac, pos, features):
+#         '''
+#         All the particle features should be input at the end.
+#         '''
+#         N_particles = features.shape[1]
+#
+#         ## randomly select a subsample of particles
+#         #inds = np.random.choice(N_particles, int(N_particles*subsample_fac), replace=False)
+#         ## generate new list
+#         #self.part_list_in_cell = gen_part_list_in_cell(pos[inds], boxsize, Nmesh)
+#         ## inputs array
+#         #self.inputs = features.T[inds,:]
+#
+#         self.part_list_in_cell = {}
+#         self.inputs = features.T*0.
+#         n_particles = 0
+#         for i in range(Nmesh**3):
+#             n = len(part_list_in_cell[i])
+#             n_new = max(int(n*subsample_fac),1)
+#             self.part_list_in_cell[i] = np.arange(n_particles, n_particles+n_new, dtype=int).tolist()
+#             inds = np.array(part_list_in_cell[i])[np.random.choice(n, n_new)]
+#             self.inputs[n_particles:n_particles+n_new] = features.T[inds,:]
+#             n_particles += n_new
+#         self.inputs = self.inputs[:n_particles]
+#
+#         # correction factors
+#         fac = float(Nmesh**3)/N_particles
+#         self.facs = {}
+#         for i in range(Nmesh**3):
+#             self.facs[i] = len(part_list_in_cell[i])/len(self.part_list_in_cell[i])*fac
+#
+#         # true halo field
+#         self.deltah_true = deltah_true.reshape(-1)
+#
+#     def __len__(self):
+#         return len(self.part_list_in_cell.keys()) # the number of cells
+#
+#     def __getitem__(self, i):
+#         '''
+#         Get the particle data within the cell specified by inx, and the corresponding true deltah of that cell.
+#         '''
+#         inds = self.part_list_in_cell[i]
+#         return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[i]]), torch.Tensor([self.deltah_true[i]])
+
 
 class MyNetwork(nn.Module):
     def __init__(self, n_input, n_neurons, n_layers, f_activation):
@@ -128,6 +173,14 @@ def criterion_squaredloss(ys, deltah_true, facs, logf=True):
     else:
         deltah_model = ys.mean(axis=2).sum(axis=1) * facs - 1.
     return ((deltah_model - deltah_true)**2).sum()
+
+# def criterion_squaredloss(fs, facs, deltahs, locs, logf=True):
+#     if logf:
+#         fs = 10**fs
+#     deltahs_ = deltahs*0.
+#     for i in range(len(deltahs_)):
+#         deltahs_[i] = fs[locs[i]:locs[i+1]].sum()*facs[i]-1.
+#     return ((deltahs_ - deltahs)**2).sum()
 
 def train(model, inputs, facs, deltah_true, optimizer, logf=True,
           nonnegative_contraint=True,
