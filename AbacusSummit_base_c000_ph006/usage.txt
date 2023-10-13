@@ -1,0 +1,8 @@
+Steps to run:
+
+1. calc_quantities.py: calculate the smoothed delta1 and the corresponding G2 and nabla^2 delta1 fields; save to disk.
+
+2. write_out_quantities.py: load in each superslab, fetch the Lagrangian indices of the halo and field particles, find out which IC grid point each particle is closest to at the initial z, tag the particle with the corresponding smoothed delta1, G2, and nabla^2 delta1 values, and save to disk.  Separating halo and field does not seem necessary after some code changes but I kept this.
+
+Then run matrix or tilde operators...
+
