@@ -11,92 +11,100 @@ from NNB_functions import *
 from particle_functions import *
 
 
-class MyDataset(Dataset):
-    def __init__(self, arg1, boxsize, Nmesh, deltah_true, Npart_per_cell, N_realizations, features, subsample=False):
-        '''
-        arg1 is either the particle positions or the particle list in cells.
-        All the particle features should be input at the end, where features is a list or np array, where if the latter, the number of rows = number of features.
-        '''
-        if type(arg1) == dict:
-            part_list_in_cell = arg1
-        else:
-            pos = arg1
-            part_list_in_cell = gen_part_list_in_cell(pos, boxsize, Nmesh)
-        # randomly choose an equal number of particles for each cell
-        self.inputs = np.zeros((Npart_per_cell*Nmesh**3, N_realizations, len(features)), dtype=np.float32)
-        self.part_list_in_cell = {}
-        fac = float(Nmesh**3)/len(features[0])
-        self.facs = {}
-        for i in range(Nmesh**3):
-            self.facs[i] = len(part_list_in_cell[i])/float(Npart_per_cell)*fac
-            ind_ = np.random.choice(part_list_in_cell[i], Npart_per_cell*N_realizations, replace=True)
-            self.part_list_in_cell[i] = np.arange(i*Npart_per_cell, (i+1)*Npart_per_cell, dtype=int).tolist()
-            for n in range(N_realizations):
-                for j, q in enumerate(features):
-                    self.inputs[i*Npart_per_cell:(i+1)*Npart_per_cell,n,j] = q[
-                        ind_[n*Npart_per_cell:(n+1)*Npart_per_cell]]
-
-        self.deltah_true = deltah_true.reshape(-1)
-        self.cell_inds = np.arange(0, Nmesh**3)
-        if subsample:
-            self.cell_inds = self.cell_inds[::8]
-        self.cell_inds = self.cell_inds.tolist()
-
-    def __len__(self):
-        return len(self.cell_inds) # the number of cells
-
-    def __getitem__(self, i):
-        '''
-        Get the particle data within the cell specified by inx, and the corresponding true deltah of that cell.
-        '''
-        j = self.cell_inds[i]
-        inds = self.part_list_in_cell[j]
-        return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[j]]), torch.Tensor([self.deltah_true[j]])
-
 # class MyDataset(Dataset):
-#     def __init__(self, part_list_in_cell, boxsize, Nmesh, deltah_true, subsample_fac, pos, features):
+#     def __init__(self, arg1, boxsize, Nmesh, deltah_true, Npart_per_cell, N_realizations, features, subsample=False):
 #         '''
-#         All the particle features should be input at the end.
+#         arg1 is either the particle positions or the particle list in cells.
+#         All the particle features should be input at the end, where features is a list or np array, where if the latter, the number of rows = number of features.
 #         '''
-#         N_particles = features.shape[1]
-#
-#         ## randomly select a subsample of particles
-#         #inds = np.random.choice(N_particles, int(N_particles*subsample_fac), replace=False)
-#         ## generate new list
-#         #self.part_list_in_cell = gen_part_list_in_cell(pos[inds], boxsize, Nmesh)
-#         ## inputs array
-#         #self.inputs = features.T[inds,:]
-#
+#         if type(arg1) == dict:
+#             part_list_in_cell = arg1
+#         else:
+#             pos = arg1
+#             part_list_in_cell = gen_part_list_in_cell(pos, boxsize, Nmesh)
+#         # randomly choose an equal number of particles for each cell
+#         self.inputs = np.zeros((Npart_per_cell*Nmesh**3, N_realizations, len(features)), dtype=np.float32)
 #         self.part_list_in_cell = {}
-#         self.inputs = features.T*0.
-#         n_particles = 0
-#         for i in range(Nmesh**3):
-#             n = len(part_list_in_cell[i])
-#             n_new = max(int(n*subsample_fac),1)
-#             self.part_list_in_cell[i] = np.arange(n_particles, n_particles+n_new, dtype=int).tolist()
-#             inds = np.array(part_list_in_cell[i])[np.random.choice(n, n_new)]
-#             self.inputs[n_particles:n_particles+n_new] = features.T[inds,:]
-#             n_particles += n_new
-#         self.inputs = self.inputs[:n_particles]
-#
-#         # correction factors
-#         fac = float(Nmesh**3)/N_particles
+#         fac = float(Nmesh**3)/len(features[0])
 #         self.facs = {}
-#         for i in range(Nmesh**3):
-#             self.facs[i] = len(part_list_in_cell[i])/len(self.part_list_in_cell[i])*fac
+#         for i in part_list_in_cell:
+#             self.facs[i] = len(part_list_in_cell[i])/float(Npart_per_cell)*fac
+#             ind_ = np.random.choice(part_list_in_cell[i], Npart_per_cell*N_realizations, replace=True)
+#             self.part_list_in_cell[i] = np.arange(i*Npart_per_cell, (i+1)*Npart_per_cell, dtype=int).tolist()
+#             for n in range(N_realizations):
+#                 for j, q in enumerate(features):
+#                     self.inputs[i*Npart_per_cell:(i+1)*Npart_per_cell,n,j] = q[
+#                         ind_[n*Npart_per_cell:(n+1)*Npart_per_cell]]
 #
-#         # true halo field
 #         self.deltah_true = deltah_true.reshape(-1)
+#         self.cell_inds = np.arange(0, Nmesh**3)
+#         if subsample:
+#             self.cell_inds = self.cell_inds[::8]
+#         self.cell_inds = self.cell_inds.tolist()
 #
 #     def __len__(self):
-#         return len(self.part_list_in_cell.keys()) # the number of cells
+#         return len(self.cell_inds) # the number of cells
 #
 #     def __getitem__(self, i):
 #         '''
 #         Get the particle data within the cell specified by inx, and the corresponding true deltah of that cell.
 #         '''
-#         inds = self.part_list_in_cell[i]
-#         return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[i]]), torch.Tensor([self.deltah_true[i]])
+#         j = self.cell_inds[i]
+#         inds = self.part_list_in_cell[j]
+#         return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[j]]), torch.Tensor([self.deltah_true[j]])
+
+class MyDataset(Dataset):
+    def __init__(self, part_list_in_cell, deltah_true, subsample_fac, features):
+        '''
+        part_list_in_cell is a dict where keys = cell indices, values = particle indices that belong to each cell.
+        deltah_true is the true halo field to be modeled, e.g. a 100^3 grid of a 500 Mpc box.
+        features is an array that contains the features of all particles.
+          features.shape[0] = number of features, features.shape[1] = number of particles.
+        subsample_fac specifies what fraction of the total number of particles to use, e.g. 0.1.
+        '''
+        N_particles = features.shape[1]
+
+        # true halo field
+        self.deltah_true = np.asarray(deltah_true).reshape(-1)
+
+        # correction factors of each cell
+        self.facs = {}
+        fac = float(self.deltah_true.size)/N_particles
+
+        if abs(subsample_fac - 1) < 1e-6: # no subsampling
+            self.part_list_in_cell = part_list_in_cell
+            for i in part_list_in_cell:
+                self.facs[i] = fac
+            self.inputs = np.asarray(features.T).astype(np.float32)
+            self.cell_inds = list(self.part_list_in_cell.keys())
+            return
+
+        self.part_list_in_cell = {}
+        self.inputs = features.T*0. # stores the features of subsampled particles
+        n_particles = 0 # the total number of particles after subsampling
+        for i in part_list_in_cell:
+            n = len(part_list_in_cell[i]) # the original number of particles in cell
+            n_new = max(int(n*subsample_fac),1) # the number of particles after subsampling
+            self.part_list_in_cell[i] = np.arange(n_particles, n_particles+n_new, dtype=int).tolist()
+            inds = np.array(part_list_in_cell[i])[np.random.choice(n, n_new)]
+            self.inputs[n_particles:n_particles+n_new] = features.T[inds,:]
+            n_particles += n_new
+            self.facs[i] = len(part_list_in_cell[i])/len(self.part_list_in_cell[i])*fac
+        self.inputs = self.inputs[:n_particles]
+
+        self.cell_inds = list(self.part_list_in_cell.keys())
+
+    def __len__(self):
+        return len(self.part_list_in_cell.keys()) # the number of cells
+
+    def __getitem__(self, i_):
+        '''
+        Get the particle data within the cell specified by i_, and the corresponding correction factor
+          and true deltah of that cell.
+        '''
+        i = self.cell_inds[i_]
+        inds = self.part_list_in_cell[i]
+        return torch.Tensor(self.inputs[inds]), torch.Tensor([self.facs[i]]), torch.Tensor([self.deltah_true[i]])
 
 
 class MyNetwork(nn.Module):
@@ -117,7 +125,7 @@ class MyNetwork(nn.Module):
         self.fc3 = nn.Linear(n_neurons, 1)
 
         self.f_activation = f_activation
-    
+
     def forward(self, x):
         # forward pass
         x = self.f_activation(self.fc1(x))
@@ -125,6 +133,33 @@ class MyNetwork(nn.Module):
             x = self.f_activation(self.fc2s[i](x))
         x = self.fc3(x)
         return x
+
+
+# class MyNetwork(nn.Module):
+#     def __init__(self, n_input, n_neurons, n_layers, f_activation):
+#         '''
+#         n_input specifies how many features to use for a particle.
+#         '''
+#         # call constructor from superclass
+#         super().__init__()
+#
+#         # define the layers
+#         self.n_layers = n_layers
+#         # TODO: structure of the NN?
+#         self.fc1 = nn.Linear(n_input, n_neurons)
+#         self.fc2s = nn.ModuleList([
+#             nn.Linear(int(n_neurons/2**i), int(n_neurons/2**(i+1))) for i in range(n_layers-1)])
+#         self.fc3 = nn.Linear(int(n_neurons/2**(n_layers-1)), 1)
+#
+#         self.f_activation = f_activation
+#
+#     def forward(self, x):
+#         # forward pass
+#         x = self.f_activation(self.fc1(x))
+#         for i in range(self.n_layers-1):
+#             x = self.f_activation(self.fc2s[i](x))
+#         x = self.fc3(x)
+#         return x
 
 
 # functions for training
@@ -160,36 +195,54 @@ def criterion_integral(ys, logf=True, fac=1., tol=1e-3):
         return ((ys.mean()-1.)/tol)**2*fac
     return (((10**ys).mean()-1.)/tol)**2*fac
 
-def criterion_squaredloss(ys, deltah_true, facs, logf=True):
-    '''
-    TODO: this assumes that, if batch size > 1, each cell should have an equal number of particles
-    f_delta1s should be the f values of particles within a cell
-    facs should be ncells / nparticles with a correction for the number of particles in each cell
-    In the case of multiple realizations, f_deltas should have shape
-      batch_size x Npart_per_cell x N_realizations x 1
-    '''
-    if logf:
-        deltah_model = (10**ys).mean(axis=2).sum(axis=1) * facs - 1.
-    else:
-        deltah_model = ys.mean(axis=2).sum(axis=1) * facs - 1.
-    return ((deltah_model - deltah_true)**2).sum()
-
-# def criterion_squaredloss(fs, facs, deltahs, locs, logf=True):
+# def criterion_squaredloss(ys, deltah_true, facs, logf=True):
+#     '''
+#     TODO: this assumes that, if batch size > 1, each cell should have an equal number of particles
+#     f_delta1s should be the f values of particles within a cell
+#     facs should be ncells / nparticles with a correction for the number of particles in each cell
+#     In the case of multiple realizations, f_deltas should have shape
+#       batch_size x Npart_per_cell x N_realizations x 1
+#     '''
 #     if logf:
-#         fs = 10**fs
-#     deltahs_ = deltahs*0.
-#     for i in range(len(deltahs_)):
-#         deltahs_[i] = fs[locs[i]:locs[i+1]].sum()*facs[i]-1.
-#     return ((deltahs_ - deltahs)**2).sum()
+#         deltah_model = (10**ys).mean(axis=2).sum(axis=1) * facs - 1.
+#     else:
+#         deltah_model = ys.mean(axis=2).sum(axis=1) * facs - 1.
+#     return ((deltah_model - deltah_true)**2).sum()
 
-def train(model, inputs, facs, deltah_true, optimizer, logf=True,
+def criterion_squaredloss(fs, facs, deltahs, locs, logf=True):
+    if logf:
+        fs = 10**fs
+    deltahs_ = deltahs*0.
+    for i in range(len(deltahs_)):
+        deltahs_[i] = fs[locs[i]:locs[i+1]].sum()*facs[i]-1.
+    return ((deltahs_ - deltahs)**2).sum()
+
+def collate_fn(batch):
+    locs = [0]
+    n = 0
+    for item in batch:
+        #inputs, fac, deltah_true = item
+        n_ = n+len(item[0]) # number of particles in a cell
+        locs.append(n_)
+        n = n_
+    b_inputs = torch.zeros((n, batch[0][0].shape[1]))
+    b_facs = torch.zeros(len(batch))
+    b_deltahs = torch.zeros(len(batch))
+    for i in range(len(batch)):
+        b_inputs[locs[i]:locs[i+1]] = batch[i][0]
+        b_facs[i] = batch[i][1]
+        b_deltahs[i] = batch[i][2]
+    return b_inputs, b_facs, b_deltahs, locs
+
+def train(model, inputs, facs, deltahs, locs, optimizer, logf=True,
           nonnegative_contraint=True,
           integral_constraint=True, fac=1., tol=1e-3, inputs_integral=None):
-    model.zero_grad()
+    model.zero_grad(set_to_none=True)
     # In the case of multiple realizations, f_deltas should have shape
     #   batch_size x Npart_per_cell x N_realizations x 1
-    ys = calc_output_NN(model, inputs)
-    loss = criterion_squaredloss(ys, deltah_true, facs, logf=logf)
+    # ys = calc_output_NN(model, inputs)
+    ys = model(inputs)
+    loss = criterion_squaredloss(ys, facs, deltahs, locs, logf=logf)
     if nonnegative_contraint:
         loss += criterion_nonnegative(ys, logf=logf)
     if integral_constraint:
@@ -200,7 +253,7 @@ def train(model, inputs, facs, deltah_true, optimizer, logf=True,
 
 
 # functions for calculating the loss and deltah_model
-def calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_method, logf=True, fac=1., minus1=False):
+def calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_method, logf=True, fac=1., minus1=False, return_fs=False):
     '''
     Similar to calc_deltah_model_NN, but using nbodykit (this is a lot faster).
     Can be used in calc_deltah_model_nbodykit or used separately.
@@ -208,10 +261,13 @@ def calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_met
     '''
     fs = np.zeros(len(pos))
     i = 0
-    while i<len(pos):
-        j = min(len(pos), i+100000)
-        fs[i:j] = model(torch.tensor(features.T[np.newaxis,i:j,:])).detach().numpy().reshape(-1)
-        i = j
+    try:
+        fs = model(torch.tensor(features.T)).detach().numpy().reshape(-1)
+    except: # if not enough memory
+        while i<len(pos):
+            j = min(len(pos), i+100000)
+            fs[i:j] = model(torch.tensor(features.T[i:j,:])).detach().numpy().reshape(-1)
+            i = j
     if logf:
         fs = 10**fs
 
@@ -219,6 +275,8 @@ def calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_met
     mesh = ArrayCatalog({'Position': pos, 'Value': fs}).to_mesh(Nmesh=Nmesh, resampler=interp_method, BoxSize=boxsize).compute()*fac
     if minus1:
         mesh -= 1.
+    if return_fs:
+        return mesh, fs
     return mesh
 
 def calc_deltah_model_nbodykit(model, sim, z, Rfs, qs, Nmesh, interp_method, logf=True):
