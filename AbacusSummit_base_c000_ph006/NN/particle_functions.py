@@ -3,6 +3,15 @@ from abacusnbody.data.compaso_halo_catalog import CompaSOHaloCatalog
 import os
 
 
+f_ijk2ind = lambda i,j,k,Nmesh: i*Nmesh**2 + j*Nmesh + k
+
+def f_ind2ijk(ind, Nmesh):
+    i = int(ind/Nmesh**2)
+    j = int((ind - i*Nmesh**2)/Nmesh)
+    k = ind - i*Nmesh**2 - j*Nmesh
+    return i,j,k
+
+
 def get_ic_path(sim):
     ic_path = '/mnt/marvin2/'
     if not os.path.exists(ic_path):
@@ -66,15 +75,77 @@ def load_particle_features(sim, z, islab, Rfs, qs):
         for q in qs[i]:
             if q == 'd':
                 features[n] = load_particle_data(islab, sim, z, Rf, 'delta1')/\
-                    np.std(np.load(ic_path+'/sdelta1_Rf%.3g.npy' % Rf))
+                    np.std(np.load(ic_path+'/sdelta1_Rf%.3g.npy' % Rf).astype(np.float64))
             elif q == 'n':
                 features[n] = load_particle_data(islab, sim, z, Rf, 'nabla2d1')/\
-                    np.std(np.load(ic_path+'/nabla2d1_Rf%.3g.npy' % Rf))
+                    np.std(np.load(ic_path+'/nabla2d1_Rf%.3g.npy' % Rf).astype(np.float64))
             elif q == 'G':
+                tmp = np.load(ic_path+'/G2_Rf%.3g.npy' % Rf).astype(np.float64)
                 features[n] = (load_particle_data(islab, sim, z, Rf, 'G2') -\
-                    np.mean(np.load(ic_path+'/G2_Rf%.3g.npy' % Rf)))/np.std(np.load(ic_path+'/G2_Rf%.3g.npy' % Rf))
+                    np.mean(tmp))/np.std(tmp)
             n += 1
 
     return pos, features
 
+
+def decorrelate_features(features, Rfs, qs, eigvecs=None, eigvals=None):
+    '''
+    Move into a feature space where the delta, nabla, G2's are decorrelated.
+    '''
+    if eigvecs is None:
+        eigvecs = np.zeros((len(features), len(features)))
+        eigvals = np.zeros(len(features))
+        # determine which ones are G2
+        ii = np.zeros(len(eigvals), dtype=bool)
+        n = 0
+        for i in range(len(Rfs)):
+            for q in qs[i]:
+                if q == 'G':
+                    ii[n] = True
+                n += 1
+        # calculate covariance matrix for the G2's
+        n_G2 = ii.sum()
+        if n_G2 > 0:
+            covmat = features[ii].astype(np.float64).dot(features[ii].T)/(features.shape[1]-1.)
+            # eigvals and eigvecs
+            eigvals_, eigvecs_ = np.linalg.eigh(covmat)
+            eigvals[:n_G2] = eigvals_
+            eigvecs[:,:n_G2][ii] = eigvecs_
+        # now the delta's and nabla's
+        covmat = features[~ii].astype(np.float64).dot(features[~ii].T)/(features.shape[1]-1.)
+        # eigvals and eigvecs
+        eigvals_, eigvecs_ = np.linalg.eigh(covmat)
+        eigvals[n_G2:] = eigvals_
+        eigvecs[:,n_G2:][~ii] = eigvecs_
+        # try:
+        #     covmat = features.astype(np.float64).dot(features.T)/(features.shape[1]-1.)
+        # except: # out of memory
+        #     covmat = np.zeros((features.shape[0], features.shape[0]), dtype=np.float64)
+        #     for i in range(features.shape[0]):
+        #         for j in range(features.shape[0]):
+        #             covmat[i,j] = features[i].astype(np.float64).dot(features[j])/(features.shape[1]-1.)
+        # eigvals, eigvecs = np.linalg.eigh(covmat)
+    features_new = eigvecs.T.dot(features)
+    # normalize before return; mean should already be 0
+    return eigvals, eigvecs, (features_new/(eigvals**0.5).reshape(-1,1)).astype(np.float32)
+
+
+def choose_decorrelated_features(eigvals, Rfs, qs):
+    '''
+    The input features array should be decorrelated and normalized to std=1.
+    Choose the first n+1 decorrelated delta and nabla's (largest eigvalues),
+      where n is the number of smoothing scales.
+    Keep all G2's.
+    '''
+    # determine which ones are G2
+    ii = np.zeros(len(eigvals), dtype=bool)
+    n = 0
+    for i in range(len(Rfs)):
+        for q in qs[i]:
+            if q == 'G':
+                n += 1
+    # keep all G2's, but only keep the first n+1 delta and nabla
+    ii[:n] = True
+    ii[(n+np.argsort(eigvals[n:]))[-(len(Rfs)+1):]] = True
+    return ii
 

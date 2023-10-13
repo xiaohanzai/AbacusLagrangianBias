@@ -17,34 +17,56 @@ if not os.path.exists(_path):
     _path = '/mnt/store2/'
 
 def main():
-    sim, z, Nmesh = sys.argv[1:]
+    sim_sol, sim_app, z, Nmesh = sys.argv[1:]
     # redshift, smoothing scale, mesh size
     z = float(z)
     Nmesh = int(Nmesh)
 
-    interp_method = 'nnb'
+    boxsize = 500.
+    interp_method = 'cic'
 
-    Rfs = [3, 4]
-    qs = ['dnG', 'dnG']
+    Rfs = [2, 2.83, 4]
+    qs = ['dnG', 'dnG', 'dnG']
 
-    # where the model is stored and where we should output
+    # where the models are stored and where we should output
     folder = ''
     for i in range(len(Rfs)):
         folder += 'Rf%s%s_' % (Rfs[i], qs[i])
     folder = folder[:-1]
-    outpath = _path+'/xwu/AbacusSummit/small/AbacusSummit_small_c000_ph3100/NN/'+folder
+    path = _path+'/xwu/AbacusSummit/%s/NN/' % sim_sol + folder + '/haloN150_Nmesh100_subsample0.1/'
+    outpath = path + '%s' % sim_app
+    if not os.path.exists(outpath):
+        os.makedirs(outpath)
 
-    # load model
-    n_inputs = 0
-    for q in qs:
-        n_inputs += len(q)
-    model = MyNetwork(n_inputs, 50, 3, F.gelu)
-    model.load_state_dict(torch.load(outpath+'/model_N150_Nmesh100_20part_5real_5epochs.pt'))
+    # load particle features
+    # training set
+    pos, features = load_particle_features(sim_sol, z, 0, Rfs, qs)
+    eigvals, eigvecs, features = decorrelate_features(features, Rfs, qs)
+    ii = choose_decorrelated_features(eigvals, Rfs, qs)
+    # the other sim
+    if sim_sol != sim_app:
+        pos, features = load_particle_features(sim_app, z, 0, Rfs, qs)
+        features = decorrelate_features(features, Rfs, qs, eigvecs=eigvecs, eigvals=eigvals)[-1]
+    features = features[ii]
+    n_feature = features.shape[0]
+    fs_ave = 0.
 
-    # calculate mesh and save
-    mesh = calc_deltah_model_nbodykit(model, sim, z, Rfs, qs, Nmesh, interp_method)
-    fname = '/deltah_model_N150_%d_%s_%s' % (Nmesh, interp_method, sim)
-    FieldMesh(mesh).save(outpath+fname+'.bigfile')
+    for i in range(5):
+        fname = 'model_5x64_lr2e-03_gamma0.9_50-70epochs_0%d' % i
+        try:
+            # load model
+            model = MyNetwork(n_feature, 64, 5, F.gelu)
+            model.load_state_dict(torch.load(path+'/'+fname+'.pt'))
+        except:
+            continue
+
+        # calculate mesh and save
+        deltah_model, fs = calc_deltah_model_nbodykit_(model, pos, features, boxsize, Nmesh, interp_method, return_fs=True)
+        fs_ave += fs
+        FieldMesh(deltah_model).save(outpath+'/deltah_'+fname+'_%d_%s.bigfile' % (Nmesh, interp_method))
+    # calculate mesh using averaged f
+    deltah_model = ArrayCatalog({'Position': pos, 'Value': fs_ave/5}).to_mesh(Nmesh=Nmesh, resampler=interp_method, BoxSize=boxsize).compute()
+    FieldMesh(deltah_model).save(outpath+'/deltah_'+fname[:-3]+'_ave_%d_%s.bigfile' % (Nmesh, interp_method))
 
 if __name__ == '__main__':
     main()
